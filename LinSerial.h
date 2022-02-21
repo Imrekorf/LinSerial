@@ -4,6 +4,7 @@
 #include <mutex>
 #include <string>
 #include <atomic>
+#include <iostream>
 
 // Linux headers
 //#include <fcntl.h> // Contains file controls like O_RDWR
@@ -12,6 +13,7 @@
 //#include <unistd.h> // write(), read(), close()
 
 #define SERIALBUFFERSIZE 1024
+#define SERIALBUFFERTEMPSIZE 256
 #define SERIALBYTESREADATONCE 1
 #define SERIALBYTESWRITEATONCE 1
 
@@ -80,7 +82,7 @@ namespace LinSer {
 
 		/**=========================== Buffer logic =========================== **/
 		typedef struct __buffer {
-			unsigned int	count;
+			std::atomic<unsigned int>	count;
 			char 		 	buff[SERIALBUFFERSIZE];
 			unsigned int  	front	: 10;
 			std::atomic<bool>	StopThread;
@@ -111,6 +113,17 @@ namespace LinSer {
 			 * @return unsigned int 
 			 */
 			unsigned int getbuffersize();
+
+			void lock(const char* indicator = nullptr){
+				if(indicator)
+					//std::cout << "locking: " << indicator << std::endl;
+				Mutex.lock();
+			}
+			void unlock(const char* indicator = nullptr){
+				if(indicator)
+					//std::cout << "unlocking: " << indicator << std::endl;
+				Mutex.unlock();
+			}
 		} Buffer;
 	}; // end of namespace Buffer
 
@@ -134,58 +147,57 @@ namespace LinSer {
 
 	/**=========================== Serial parameters  =========================== **/
 	struct SerParam {
-		enum class Baudrate {
-			// values based on termios.h
-
-			B0 		= 00,
-			B50		= 01,
-			B75		= 02,
-			B110    = 03,
-			B134	= 04,
-			B150	= 05,
-			B200	= 06,
-			B300    = 07,
-			B600    = 10,
-			B1200   = 11,
-			B1800	= 12,
-			B2400   = 13,
-			B4800   = 14,
-			B9600   = 15,
-			B19200  = 16,
-			B38400  = 17,
-			B57600  = 0010001,
-			B115200 = 0010002,
-			B230400	= 0010003,
-			B460800 = 0010004,
+		// values based on termios.h
+		enum Baudrate {
+			Baud0 		= 00,
+			Baud50		= 01,
+			Baud75		= 02,
+			Baud110    	= 03,
+			Baud134		= 04,
+			Baud150		= 05,
+			Baud200		= 06,
+			Baud300     = 07,
+			Baud600     = 10,
+			Baud1200    = 11,
+			Baud1800	= 12,
+			Baud2400    = 13,
+			Baud4800    = 14,
+			Baud9600    = 15,
+			Baud19200   = 16,
+			Baud38400   = 17,
+			Baud57600   = 0010001,
+			Baud115200  = 0010002,
+			Baud230400	= 0010003,
+			Baud460800  = 0010004,
 		};
 
-		enum class StopBits {
-			ONE, // clear CSTOPB
-			TWO  // set CSTOPB
+		enum StopBits {
+			ONE_STOP, // clear CSTOPB
+			TWO_STOP  // set CSTOPB
 		};
 
 		// amount of bits per message
-		enum class BitCount {
+		enum BitCount {
 			// values based on termios.h
 
-			CS5 = 00,
-			CS6 = 20,
-			CS7 = 40,
-			CS8 = 60
+			ByteSize5 = 00,
+			ByteSize6 = 20,
+			ByteSize7 = 40,
+			ByteSize8 = 60
 		};
 
-		enum class Parity {
-			NONE,	// clear PARNEB
-			EVEN,	// set PARENDB & clear PARODD
-			ODD,	// set PARENB & set PARODD
+		enum Parity {
+			PAR_NONE,	// clear PARNEB
+			PAR_EVEN,	// set PARENDB & clear PARODD
+			PAR_ODD,	// set PARENB & set PARODD
 		};
 
-		Baudrate rate 			= Baudrate::B9600;
-		Parity P 				= Parity::NONE;
-		StopBits SB				= StopBits::ONE;
-		BitCount bytesize 		= BitCount::CS8;
-		SerParam(Baudrate rate = Baudrate::B9600, Parity P = Parity::NONE, StopBits SB = StopBits::ONE, BitCount bitcount = BitCount::CS8) :
-			rate(rate), P(P), SB(SB), bytesize(bytesize) {}
+		Baudrate rate 			= Baudrate::Baud9600;
+		Parity P 				= Parity::PAR_NONE;
+		StopBits SB				= StopBits::ONE_STOP;
+		BitCount bytesize 		= BitCount::ByteSize8;
+		SerParam(Baudrate rate = Baudrate::Baud9600, Parity P = Parity::PAR_NONE, StopBits SB = StopBits::ONE_STOP, BitCount bitcount = BitCount::ByteSize8) :
+			rate(rate), P(P), SB(SB), bytesize(bitcount) {}
 	};
 
 	struct SerTimeOut {
@@ -235,6 +247,15 @@ namespace LinSer {
 		std::thread SendThread;
 
 	public:
+		/**
+		 * @brief Construct a new Serial object
+		 * 
+		 * @param Port a c style string name of the serial port to be read
+		 * @param SP the serial parameter struct
+		 * @param ST the serial timeout struct
+		 * 
+		 * @throws SerialException with a text on what went wrong.
+		 */
 		Serial(const char* Port, SerParam SP = SerParam(), SerTimeOut ST = SerTimeOut(0, 0));
 		~Serial();
 		
@@ -338,7 +359,7 @@ namespace LinSer {
 		 */
 		template<typename type>
 		void print(type val){
-			writeStr(std::to_string(val));
+			writeStr(std::string(val));
 		}
 
 		/**
@@ -349,7 +370,7 @@ namespace LinSer {
 		 */
 		template<typename type>
 		void println(type val){
-			writeStr(std::to_string(val) + "\n\r");
+			writeStr(std::string(val) + "\n\r");
 		}
 
 		/**
