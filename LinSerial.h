@@ -6,34 +6,79 @@
 #include <atomic>
 #include <iostream>
 
-// Linux headers
-//#include <fcntl.h> // Contains file controls like O_RDWR
-//#include <errno.h> // Error integer and strerror() function
-//#include <termios.h> // Contains POSIX terminal control definitions
-//#include <unistd.h> // write(), read(), close()
+#include <utility>
+#include <type_traits>
+#include <sstream>
 
+/** @defgroup SerialBufferDefines */
+/**@{*/
+
+/**
+ * @brief size of the FIFO buffer 
+ */
 #define SERIALBUFFERSIZE 1024
-#define SERIALBUFFERTEMPSIZE 256
+
+/**
+ * @brief buffer size for incoming messages. Used to temporarly store data
+ */
+#define INCOMINGBUFFERSIZE 256
+
+/**
+ * @brief Amount of bytes read at once from the serial handle
+ */
 #define SERIALBYTESREADATONCE 1
+
+/**
+ * @brief Amount of bytes to write to the serial handle at once
+ */
 #define SERIALBYTESWRITEATONCE 1
+
+/**
+ * @brief The amount of time in milliseconds a Read thread sleeps for between trying to read the incoming serial data
+ */
+#define SERIALREADSLEEPTIME 10
+
+/**
+ * @brief The amount of time in milliseconds a Write thread sleeps for between trying to read the outgoing serial buffer
+ */
+#define SERIALWRITESLEEPTIME 10
+
+/**
+ * @brief Enables extra mutex locking/unlocking debugging message
+ */
+// #define _LINSERDEBUGMUTEX
+
+/**
+ * @brief Enables debug messages for certain functions
+ * 0 = no debug
+ * 1 = errors
+ * 2 = state changes
+ * 3 = full debug
+ * 4 = full debug + mutex
+ */
+#define _LINSERDEBUG 3
+/**@}*/
 
 namespace LinSer {
 	namespace Buffer {
 		/**=========================== Buffer Exceptions =========================== **/
+		
+		/**
+		 * @brief Base Serial buffer exception.
+		 */
 		class SerialBufferException: public std::exception {
 		public:
-			enum class EType{
+			enum class BEType{
 				Overflow,
-				Underflow,
-				WriteRetryTimeout
+				Underflow
 			};
 		private:
 			std::string message_;
-			EType error;
+			BEType error;
 			unsigned char byte;
 		public:
 			
-			explicit SerialBufferException(const std::string& message, const EType E, unsigned char byte) : 
+			explicit SerialBufferException(const std::string& message, const BEType E, unsigned char byte) : 
 				message_(message), error(E), byte(byte) {}
 			/**
 			 * @brief c-style string of the exception message
@@ -48,7 +93,7 @@ namespace LinSer {
 			 * 
 			 * @return EType 
 			 */
-			EType GetType(){
+			BEType GetType(){
 				return error;
 			}
 			/**
@@ -61,69 +106,82 @@ namespace LinSer {
 			}
 		};
 
+		/**
+		 * @brief Serial buffer overflow exception when trying to push too much data to a buffer
+		 * Mas size of the Serial buffer is based on SERIALBUFFERSIZE
+		 */
 		class SerialBufferOverflowException: public SerialBufferException {
 		public:
 			explicit SerialBufferOverflowException(unsigned char byte) : 
-				SerialBufferException("Buffer overflow during push operation", EType::Overflow, byte) {}
+				SerialBufferException("Buffer overflow during push operation", BEType::Overflow, byte) {}
 		};
+
+		/**
+		 * @brief Serial buffer underflow exception when trying to pop too much data from a buffer
+		 * 
+		 */
 		class SerialBufferUnderflowException: public SerialBufferException {
 		public:
 			explicit SerialBufferUnderflowException(unsigned char byte) : 
-				SerialBufferException("Buffer undeflow during pop operation", EType::Underflow, byte) {}
+				SerialBufferException("Buffer undeflow during pop operation", BEType::Underflow, byte) {}
 		};
-		class WriteRetryTimeoutException: public SerialBufferException {
-		public:
-			explicit WriteRetryTimeoutException(unsigned char byte) : 
-				SerialBufferException("Timeout after 50ms of trying to write character", EType::WriteRetryTimeout, byte) {}
-		};
-
-
-
 
 		/**=========================== Buffer logic =========================== **/
 		typedef struct __buffer {
-			std::atomic<unsigned int>	count;
+			unsigned int	count;
 			char 		 	buff[SERIALBUFFERSIZE];
 			unsigned int  	front	: 10;
-			std::atomic<bool>	StopThread;
+			bool			StopThread;
 			std::mutex	  	Mutex;
+
+			std::thread ThreadFunc;
+
+			/**
+			 * @brief Construct a new __buffer object
+			 */
 			__buffer() : count(0), front(0), StopThread(false) {}
+			
 			/**
 			 * @brief Pushes a byte to the buffer
 			 * 
 			 * @param C the byte to be pushed to the buffer
-			 * @note can throw a SerialBufferOverflowException 
+			 * @throws a SerialBufferOverflowException when size of buffer = SERIALBUFFERSIZE
 			 */
 			void push(char C);
+
 			/**
 			 * @brief Pops a byte to the buffer
 			 * 
 			 * @returns char the byte popped from the buffer
-			 * @note can throw a SerialBufferUnderflowException 
+			 * @throws a SerialBufferUnderflowException when size of buffer = 0
 			 */
 			char pop(void);
+
 			/**
 			 * @brief Flushes the buffer
-			 * 
 			 */
 			void flushbuffer();
+
 			/**
 			 * @brief Returns the current size of the buffer
 			 * 
 			 * @return unsigned int 
 			 */
-			unsigned int getbuffersize();
+			inline unsigned int getBufferSize() const;
 
-			void lock(const char* indicator = nullptr){
-				if(indicator)
-					//std::cout << "locking: " << indicator << std::endl;
-				Mutex.lock();
-			}
-			void unlock(const char* indicator = nullptr){
-				if(indicator)
-					//std::cout << "unlocking: " << indicator << std::endl;
-				Mutex.unlock();
-			}
+			/**
+			 * @brief Locks this buffer's mutex
+			 * 
+			 * @param indicator If debugging is enabled by defining _LINSERDEBUGMUTEX then an extra message is printed as to which process locks the mutex
+			 */
+			void lock(const char* indicator);
+
+			/**
+			 * @brief Unlocks this buffer's mutex
+			 * 
+			 * @param indicator If debugging is enabled by defining _LINSERDEBUGMUTEX then an extra message is printed as to which process unlocks the mutex
+			 */
+			void unlock(const char* indicator);
 		} Buffer;
 	}; // end of namespace Buffer
 
@@ -131,23 +189,60 @@ namespace LinSer {
 
 
 	/**=========================== Serial Exceptions =========================== **/
+	
+	/**
+	 * @brief Serial exception thrown when an error with tcgetattr() or open() occurs
+	 */
 	class SerialException: public std::exception {
+	public:
+		enum SEType {
+			openError,
+			tcgetarrtError,
+			tcsetattrError,
+			WriteRetryTimeout,
+			NoEOLTimeout,
+		};
 	private:
 		std::string message_;
-
+		SEType error_;
 	public:
-		explicit SerialException(const std::string& message) : message_(message) {}
+		explicit SerialException(const std::string& message, SEType error) : message_(message), error_(error) {}
 		const char* what() const noexcept override {
 			return message_.c_str();
 		}
+	};
+
+	/**
+	 * @brief Throws this exception if after 50ms the outgoing buffer has no room for any new bytes.
+	 */
+	class WriteRetryTimeoutException: public SerialException {
+	public:
+		explicit WriteRetryTimeoutException() : 
+			SerialException("Timeout after 50ms of trying to write character", SEType::WriteRetryTimeout) {}
+	};
+
+	/**
+	 * @brief Throws this exception if after timeout time end of line still was not received
+	 */
+	class NoEOLTimeoutException: public SerialException {
+	public:
+		explicit NoEOLTimeoutException() : 
+			SerialException("Timout after timeout ms, no end of line received", SEType::NoEOLTimeout) {}
 	};
 
 
 
 
 	/**=========================== Serial parameters  =========================== **/
+	
+	/**
+	 * @brief Serial Parameter struct containing data about serialconnection. Values based on termios.h
+	 * By default SerParam initializes with a baudrate of 9600, no parity checking, 1 stop bit and a byte size of 8.
+	 */
 	struct SerParam {
-		// values based on termios.h
+		/**
+		 * @brief Baudrate enum for specificing the baudrate. 
+		 */
 		enum Baudrate {
 			Baud0 		= 00,
 			Baud50		= 01,
@@ -171,21 +266,28 @@ namespace LinSer {
 			Baud460800  = 0010004,
 		};
 
+		/**
+		 * @brief Stop bit enum for specifing the amount of stop bits in communication
+		 */
 		enum StopBits {
 			ONE_STOP, // clear CSTOPB
 			TWO_STOP  // set CSTOPB
 		};
 
-		// amount of bits per message
+		/**
+		 * @brief Bitcount enum for specifing the amount of bits in a message. 
+		 */
 		enum BitCount {
 			// values based on termios.h
-
 			ByteSize5 = 00,
 			ByteSize6 = 20,
 			ByteSize7 = 40,
 			ByteSize8 = 60
 		};
 
+		/**
+		 * @brief Parity enum for specifing the parity control
+		 */
 		enum Parity {
 			PAR_NONE,	// clear PARNEB
 			PAR_EVEN,	// set PARENDB & clear PARODD
@@ -200,6 +302,9 @@ namespace LinSer {
 			rate(rate), P(P), SB(SB), bytesize(bitcount) {}
 	};
 
+	/**
+	 * @brief Serial Timeout struct containing data about serial timeout.
+	 */
 	struct SerTimeOut {
 		/* calculated with:
 		* ReadIntervalTimeout = max time between bytes
@@ -209,19 +314,20 @@ namespace LinSer {
 
 		unsigned char __VMIN = 0;
 		unsigned char __VTIME = 1;
+		SerTimeOut() {}
 
 		SerTimeOut(unsigned char TimeOutms) {__VTIME = (unsigned char)((float)TimeOutms/100.0f); /* convert ms to deciseconds */}
 		
 		/**
 		 * @brief Construct a new Ser Time Out object
-		 * if MinCharCount > 0 && TimeOutms > 0, block until 1st character and then block until TimeOutms
+		 * if MinCharCount > 0 && TimeOutms > 0, block until either MinCharCount has been received or Timeoutms after first character has elapsed.
 		 * if MinCharCount > 0 && TimeOutms = 0, block until minimum amount of characters received
 		 * if MinCharCount = 0 && TimeOutms > 0, block until timeoutms
 		 * if MinCharCount = 0 && TimeOutms = 0, don't block, read what is avaible
 		 * @param MinCharCount 
 		 * @param TimeOutms 
 		 */
-		SerTimeOut(unsigned char MinCharCount, unsigned char TimeOutms = 0){__VMIN = MinCharCount; __VTIME = (unsigned char)((float)TimeOutms/100.0f);};
+		SerTimeOut(unsigned int MinCharCount, unsigned int TimeOutms = 0){__VMIN = MinCharCount; __VTIME = (unsigned char)((float)TimeOutms/100.0f);};
 	};
 
 
@@ -243,20 +349,21 @@ namespace LinSer {
 		static int ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mutex& SHMutex);
 		static int SendThreadFunc(Buffer::Buffer& OutGoingBuffer, int& hSerial, std::mutex& SHMutex);
 
-		std::thread ReadThread;
-		std::thread SendThread;
-
 	public:
 		/**
-		 * @brief Construct a new Serial object
+		 * @brief Construct a new Serial object, starting two threads for reading and writing
 		 * 
 		 * @param Port a c style string name of the serial port to be read
 		 * @param SP the serial parameter struct
 		 * @param ST the serial timeout struct
 		 * 
-		 * @throws SerialException with a text on what went wrong.
+		 * @throws SerialException if open() or tcgetattr() fails. Use what() to get error message
 		 */
-		Serial(const char* Port, SerParam SP = SerParam(), SerTimeOut ST = SerTimeOut(0, 0));
+		Serial(const char* Port, const SerParam& SP = SerParam(), const SerTimeOut& ST = SerTimeOut());
+		
+		/**
+		 * @brief Destroy the Serial object, also closes the read and write thread
+		 */
 		~Serial();
 		
 		/**
@@ -278,7 +385,7 @@ namespace LinSer {
 		 * 
 		 * @param refreshrate refreshrate in milliseconds for internal timer for how quickly to check if the outgoing buffer is empty
 		 */
-		void flush(unsigned int refreshrate = 5);
+		void flush(const unsigned int refreshrate = 5);
 
 		/**
 		 * @brief Clears currently stored buffer data, Incoming and Outgoing
@@ -289,8 +396,9 @@ namespace LinSer {
 		 * @brief Sets the timeout parameters of the serial port
 		 * 
 		 * @param ST the timeout parameters
+		 * @throws SerialException when tcgetattr() fails.
 		 */
-		void setTimeout(SerTimeOut ST);
+		void setTimeout(const SerTimeOut& ST);
 
 		/**
 		 * @brief returns first byte of incoming serial data available.
@@ -304,10 +412,10 @@ namespace LinSer {
 		/**
 		 * @brief reads incoming buffer into char array
 		 * 
-		 * @param buffer the buffer to read characters into
-		 * @param length the amount of characters to be read, if 0 read all characters from the buffer
+		 * @param[out] buffer the buffer to read characters into
+		 * @param[in]  length the amount of characters to be read, if 0 read all characters from the buffer
 		 * 
-		 * @return int the amount of read bytes
+		 * @return unsigned int the amount of read bytes
 		 * 
 		 * @note Terminates when buffer empty or if it reaches size of length
 		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
@@ -316,19 +424,27 @@ namespace LinSer {
 
 		/**
 		 * @brief reads the Incomming buffer into a char array until the terminator character is read
-		 * Terminator character is omitted from the end of the buffer and discarded from the buffer
 		 * Terminates when buffer empty or if it reaches size of length
 		 * 
-		 * @param terminator the terminator character
-		 * @param buffer the buffer to read characters into
-		 * @param length the amount of characters to read, if 0 read all characters from the buffer
+		 * @param[out] buffer the buffer to read characters into
+		 * @param[in]  terminator the terminator character
+		 * @param[in]  length the amount of characters to read, if 0 read all characters from the buffer
 		 * 
 		 * @return int the amount of read bytes
 		 * 
 		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
-		unsigned int readBytesUntil(char terminator, char* buffer, unsigned int length = 0);
+		unsigned int readBytesUntil(char* buffer, const char terminator, unsigned int length = 0);
 		
+		/**
+		 * @brief Reads a line until line_end from buffer. If line_end is not in buffer, hangs until it is received based on timeout.
+		 * 
+		 * @param[in] line_end The string that represents the end of the line
+		 * @param[in] timeout_ms the maximum amount of time in milliseconds to wait if line_end character was not in present buffer
+		 * @return std::string the read line
+		 */
+		std::string readLine(const std::string& line_end = "\r\n", std::size_t timeout_ms = 500);
+
 		/**
 		 * @brief reads the Incoming buffer into a string
 		 * 
@@ -339,38 +455,71 @@ namespace LinSer {
 		std::string readString();
 		
 		/**
-		 * @brief reads the Incomming buffer into a char array until the terminator character is read
+		 * @brief reads the Incomming buffer into a string until the terminator character is read
 		 * Terminator character is omitted from the end of the buffer and discarded from the buffer
 		 * Terminates when buffer empty or if it reaches terminator character
 		 * 
-		 * @param terminator the terminator character
+		 * @param[in] terminator the terminator character
 		 * 
 		 * @return std::string a string of read bytes
 		 * 
 		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
-		std::string readStringUntil(char terminator);
+		std::string readStringUntil(const char terminator);
+
+		/**
+		 * @brief reads the Incomming buffer into a string until the substring is read
+		 * Terminates when buffer empty or if a match with substr is made
+		 * 
+		 * @param[in] substr the substring to read until
+		 * @return std::string the read string
+		 */
+		std::string readStringUntil(const std::string& substr);
+
+		// checks if a type T has the << operator, this works somehow? source: https://stackoverflow.com/a/18603716
+		// template<class T, typename = decltype(std::declval<std::istream&>() << std::declval<T&>() )>
+		// static std::true_type 	supports_to_stream_test(const T&);
+		// static std::false_type 	supports_to_stream_test(...);
+		// template<class T> using supports_to_stream = decltype(supports_to_stream_test(std::declval<T>()));
+
+		template<typename T>
+		class is_streamable {
+			template<typename TT>
+			static auto supports_to_stream_test(int)
+			-> decltype( std::declval<std::stringstream&>() << std::declval<TT>(), std::true_type() );
+
+			template<typename, typename>
+			static auto supports_to_stream_test(...) -> std::false_type;
+		public:
+			static const bool value = decltype(supports_to_stream_test<T>(0))::value;
+		};
 
 		/**
 		 * @brief prints data to the serial port as human-readable ASCII text
 		 * 
 		 * @tparam type the data type of the desired value, should be convertable to string.
-		 * @param val the value to be printed
+		 * @param[in] val the value to be printed
 		 */
 		template<typename type>
-		void print(type val){
-			writeStr(std::string(val));
+		typename std::enable_if<is_streamable<type>::value, void>::type 
+		  print(type val){
+			std::stringstream convert; 
+			convert << val;
+			writeStr(convert.str());
 		}
 
+		
 		/**
 		 * @brief prints data to the serial port as human-readable ASCII text followed by a new line and carriage return or '\n\r'
 		 * 
 		 * @tparam type type the data type of the desired value, should be convertable to string.
-		 * @param val the value to be printed
+		 * @param[in] val the value to be printed
 		 */
 		template<typename type>
-		void println(type val){
-			writeStr(std::string(val) + "\n\r");
+		typename std::enable_if<is_streamable<type>::value, void>::type 
+		  println(type val){
+			print<type>(val);
+			writeStr("\n\r");
 		}
 
 		/**
@@ -379,20 +528,20 @@ namespace LinSer {
 		 * If the transmit buffer is full then *write()* will block until there is enough space in the buffer.
 		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
 		 * 
-		 * @param val the value to be send over serial
+		 * @param[in] val the value to be send over serial
 		 * 
-		 * @throws WriteRetryTimeoutException After 10 retries with a delay of 5ms the byte was unable to be send.
+		 * @throws WriteRetryTimeoutException thrown when after 50ms the byte was unable to be added to the outgoing buffer.
 		 */
-		void writeByte(char val);
+		void writeByte(const char val);
 		
 		/**
 		 * @brief sends a string as a series of bytes
 		 * will return before any characters are transmitted over serial.
 		 * If the transmit buffer is full then write() will block until there is enough space in the buffer.
 		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
-		 * @param str the string to be send over serial
+		 * @param[in] str the string to be send over serial
 		 */
-		void writeStr(std::string str);
+		void writeStr(const std::string str);
 
 		/**
 		 * @brief writes an array as a series of bytes
@@ -400,10 +549,10 @@ namespace LinSer {
 		 * If the transmit buffer is full then write() will block until there is enough space in the buffer.
 		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
 		 * 
-		 * @param buf buffer to be written over serial
-		 * @param len the length of the buffer.
+		 * @param[in] buf buffer to be written to serial
+		 * @param[in] len the length of the buffer.
 		 */
-		void writeBytes(char* buf, unsigned int len);
+		void writeBytes(const char* buf, const unsigned int len);
 
 	};
 } // end of namespace WinSer
