@@ -17,12 +17,16 @@
 /**
  * @brief size of the FIFO buffer 
  */
+#ifndef SERIALBUFFERSIZE
 #define SERIALBUFFERSIZE 1024
+#endif
 
 /**
  * @brief The amount of time in milliseconds a Read thread sleeps for between trying to read the incoming serial data
  */
+#ifndef SERIALREADSLEEPTIME
 #define SERIALREADSLEEPTIME 10
+#endif
 
 /**
  * @brief Enables debug messages for certain functions
@@ -33,7 +37,7 @@
  * 4 = debug + mutex lock changes
  */
 #ifndef LINSERDEBUG
-	#define LINSERDEBUG 2
+#define LINSERDEBUG 2
 #endif
 /**@}*/
 
@@ -177,7 +181,6 @@ namespace LinSer {
 			openError,
 			tcgetarrtError,
 			tcsetattrError,
-			WriteRetryTimeout,
 			NoEOLTimeout,
 		};
 	private:
@@ -188,15 +191,6 @@ namespace LinSer {
 		const char* what() const noexcept override {
 			return message_.c_str();
 		}
-	};
-
-	/**
-	 * @brief Throws this exception if after 50ms the outgoing buffer has no room for any new bytes.
-	 */
-	class WriteRetryTimeoutException: public SerialException {
-	public:
-		explicit WriteRetryTimeoutException() : 
-			SerialException("Timeout after 50ms of trying to write character", SEType::WriteRetryTimeout) {}
 	};
 
 	/**
@@ -350,20 +344,6 @@ namespace LinSer {
 		unsigned int available();
 
 		/**
-		 * @brief returns the number of bytes available to write without blocking the write operation
-		 * 
-		 * @return unsigned int the number of bytes available to write
-		 */
-		// unsigned int availableForWrite();
-
-		/**
-		 * @brief waits for transmission of outgoing serial data to complete
-		 * 
-		 * @param refreshrate refreshrate in milliseconds for internal timer for how quickly to check if the outgoing buffer is empty
-		 */
-		// void flush(const unsigned int refreshrate = 5);
-
-		/**
 		 * @brief Clears currently stored buffer data
 		 */
 		void clearBuffer();
@@ -372,7 +352,7 @@ namespace LinSer {
 		 * @brief Sets the timeout parameters of the serial port
 		 * 
 		 * @param ST the timeout parameters
-		 * @throws SerialException when tcgetattr() fails.
+		 * @throws SerialException when tcgetattr() or tcsetattr() fails.
 		 */
 		void setTimeout(const SerTimeOut& ST);
 
@@ -387,14 +367,13 @@ namespace LinSer {
 		
 		/**
 		 * @brief reads incoming buffer into char array
+		 * Terminates when buffer empty or if it reaches size of length
 		 * 
 		 * @param[out] buffer the buffer to read characters into
 		 * @param[in]  length the amount of characters to be read, if 0 read all characters from the buffer
 		 * 
 		 * @return unsigned int the amount of read bytes
 		 * 
-		 * @note Terminates when buffer empty or if it reaches size of length
-		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
 		unsigned int readBytes(char* buffer, unsigned int length = 0);
 
@@ -407,8 +386,6 @@ namespace LinSer {
 		 * @param[in]  length the amount of characters to read, if 0 read all characters from the buffer
 		 * 
 		 * @return int the amount of read bytes
-		 * 
-		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
 		unsigned int readBytesUntil(char* buffer, const char terminator, unsigned int length = 0);
 		
@@ -418,6 +395,8 @@ namespace LinSer {
 		 * @param[in] line_end The string that represents the end of the line
 		 * @param[in] timeout_ms the maximum amount of time in milliseconds to wait if line_end character was not in present buffer
 		 * @return std::string the read line
+		 * 
+		 * @throws NoEOLTimeoutException exception is line_end is not received after timeout_ms
 		 */
 		std::string readLine(const std::string& line_end = "\r\n", int64_t timeout_ms = 500);
 
@@ -425,8 +404,6 @@ namespace LinSer {
 		 * @brief reads the Incoming buffer into a string
 		 * 
 		 * @return std::string a string of the read bytes
-		 * 
-		* @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
 		std::string readString();
 		
@@ -438,8 +415,6 @@ namespace LinSer {
 		 * @param[in] terminator the terminator character
 		 * 
 		 * @return std::string a string of read bytes
-		 * 
-		 * @throws SerialBufferUnderflowException A serial buffer underflow exception when the buffer is empty but a read was attempted.
 		 */
 		std::string readStringUntil(const char terminator);
 
@@ -451,12 +426,6 @@ namespace LinSer {
 		 * @return std::string the read string
 		 */
 		std::string readStringUntil(const std::string& substr);
-
-		// checks if a type T has the << operator, this works somehow? source: https://stackoverflow.com/a/18603716
-		// template<class T, typename = decltype(std::declval<std::istream&>() << std::declval<T&>() )>
-		// static std::true_type 	supports_to_stream_test(const T&);
-		// static std::false_type 	supports_to_stream_test(...);
-		// template<class T> using supports_to_stream = decltype(supports_to_stream_test(std::declval<T>()));
 
 		template<typename T>
 		class is_streamable {
@@ -493,42 +462,38 @@ namespace LinSer {
 		 */
 		template<typename type>
 		typename std::enable_if<is_streamable<type>::value, void>::type 
-		  println(type val){
+		  println(type val, std::string ln = "\r\n"){
 			print<type>(val);
-			writeStr("\n\r");
+			writeStr(ln);
 		}
 
 		/**
 		 * @brief sends a single byte
-		 * will return before any characters are transmitted over serial.
-		 * If the transmit buffer is full then *write()* will block until there is enough space in the buffer.
-		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
-		 * 
+		 *
 		 * @param[in] val the value to be send over serial
 		 * 
-		 * @throws WriteRetryTimeoutException thrown when after 50ms the byte was unable to be added to the outgoing buffer.
 		 */
 		void writeByte(const char val);
 		
 		/**
 		 * @brief sends a string as a series of bytes
-		 * will return before any characters are transmitted over serial.
-		 * If the transmit buffer is full then write() will block until there is enough space in the buffer.
-		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
 		 * @param[in] str the string to be send over serial
 		 */
 		void writeStr(const std::string str);
 
 		/**
 		 * @brief writes an array as a series of bytes
-		 * will return before any characters are transmitted over serial.
-		 * If the transmit buffer is full then write() will block until there is enough space in the buffer.
-		 * To avoid blocking calls check the amount of free space in the transmit buffer using *AvailableForWrite()*
 		 * 
 		 * @param[in] buf buffer to be written to serial
 		 * @param[in] len the length of the buffer.
 		 */
 		void writeBytes(const char* buf, const unsigned int len);
+
+		template<typename T>
+		Serial& operator<<(const T& val){
+			print(val);
+			return *this;
+		}
 
 	};
 } // end of namespace WinSer

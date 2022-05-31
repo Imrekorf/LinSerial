@@ -15,7 +15,8 @@ int main() {
 
     for (int i = 0; i < 2; i++){
         std::cout << "writing hello to port" << std::endl;
-        port.writeStr("Hello!");
+        // port.writeStr("Hello!");
+        port << "Hello!";
         while (!port.available()){
             usleep(10000);
         }

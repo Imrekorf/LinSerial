@@ -376,7 +376,7 @@ unsigned int Serial::readBytes(char* buffer, unsigned int length){
 	if(length == 0){
 		length = IncomingBuffer.getBufferSize();
 	}
-	for(; i < length; i++){
+	for(; i < length && IncomingBuffer.getBufferSize(); i++){
 		char temp = IncomingBuffer.pop();
 		buffer[i] = temp;
 	}
