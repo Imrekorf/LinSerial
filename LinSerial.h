@@ -5,6 +5,7 @@
 #include <string>
 #include <atomic>
 #include <iostream>
+#include <map>
 
 #include <utility>
 #include <type_traits>
@@ -19,44 +20,21 @@
 #define SERIALBUFFERSIZE 1024
 
 /**
- * @brief buffer size for incoming messages. Used to temporarly store data
- */
-#define INCOMINGBUFFERSIZE 256
-
-/**
- * @brief Amount of bytes read at once from the serial handle
- */
-#define SERIALBYTESREADATONCE 1
-
-/**
- * @brief Amount of bytes to write to the serial handle at once
- */
-#define SERIALBYTESWRITEATONCE 1
-
-/**
  * @brief The amount of time in milliseconds a Read thread sleeps for between trying to read the incoming serial data
  */
 #define SERIALREADSLEEPTIME 10
 
 /**
- * @brief The amount of time in milliseconds a Write thread sleeps for between trying to read the outgoing serial buffer
- */
-#define SERIALWRITESLEEPTIME 10
-
-/**
- * @brief Enables extra mutex locking/unlocking debugging message
- */
-// #define _LINSERDEBUGMUTEX
-
-/**
  * @brief Enables debug messages for certain functions
  * 0 = no debug
  * 1 = errors
- * 2 = state changes
- * 3 = full debug
- * 4 = full debug + mutex
+ * 2 = Serial setup messages
+ * 3 = debug
+ * 4 = debug + mutex lock changes
  */
-#define _LINSERDEBUG 3
+#ifndef LINSERDEBUG
+	#define LINSERDEBUG 2
+#endif
 /**@}*/
 
 namespace LinSer {
@@ -342,12 +320,10 @@ namespace LinSer {
 		int hSerial = 0;
 
 		Buffer::Buffer IncomingBuffer;
-		Buffer::Buffer OutGoingBuffer;
 		
 		std::mutex	   SerialHandleMutex;	// gets locked whenever a function that uses hSerial is called
-		
+
 		static int ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mutex& SHMutex);
-		static int SendThreadFunc(Buffer::Buffer& OutGoingBuffer, int& hSerial, std::mutex& SHMutex);
 
 	public:
 		/**
@@ -378,17 +354,17 @@ namespace LinSer {
 		 * 
 		 * @return unsigned int the number of bytes available to write
 		 */
-		unsigned int availableForWrite();
+		// unsigned int availableForWrite();
 
 		/**
 		 * @brief waits for transmission of outgoing serial data to complete
 		 * 
 		 * @param refreshrate refreshrate in milliseconds for internal timer for how quickly to check if the outgoing buffer is empty
 		 */
-		void flush(const unsigned int refreshrate = 5);
+		// void flush(const unsigned int refreshrate = 5);
 
 		/**
-		 * @brief Clears currently stored buffer data, Incoming and Outgoing
+		 * @brief Clears currently stored buffer data
 		 */
 		void clearBuffer();
 
@@ -443,7 +419,7 @@ namespace LinSer {
 		 * @param[in] timeout_ms the maximum amount of time in milliseconds to wait if line_end character was not in present buffer
 		 * @return std::string the read line
 		 */
-		std::string readLine(const std::string& line_end = "\r\n", std::size_t timeout_ms = 500);
+		std::string readLine(const std::string& line_end = "\r\n", int64_t timeout_ms = 500);
 
 		/**
 		 * @brief reads the Incoming buffer into a string

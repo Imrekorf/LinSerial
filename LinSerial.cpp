@@ -8,7 +8,6 @@
 #include <termios.h>	// Contains POSIX terminal control definitions
 #include <unistd.h> 	// write(), read(), close()
 #include <sys/ioctl.h>	// ioctl()
-
 #include "LinSerial.h"
 
 // based on: https://web.archive.org/web/20180127160838/http://bd.eduweb.hhs.nl/micprg/pdf/serial-win.pdf
@@ -16,12 +15,11 @@
 
 namespace LinSer {
 
-
 /**=========================== Buffer::_buffer functions =========================== **/
 void Buffer::__buffer::push(char c){
 	// check if buffer is full
 	if(count >= SERIALBUFFERSIZE){ 
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Buffer overflow!" << std::endl;
 		#endif
 		throw SerialBufferOverflowException(c); 
@@ -32,7 +30,7 @@ void Buffer::__buffer::push(char c){
 
 char Buffer::__buffer::pop(void){
 	if(!count){ 
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Buffer underflow!" << std::endl;
 		#endif
 		throw SerialBufferUnderflowException(0);
@@ -52,19 +50,23 @@ inline unsigned int Buffer::__buffer::getBufferSize() const {
 }
 
 void Buffer::__buffer::lock(const char* indicator = nullptr){
-	#if _LINSERDEBUG >= 4
+	#if LINSERDEBUG >= 4
 	if(indicator){
 		std::cout << "[LinSer] locking: " << indicator << std::endl;
 	}
+	#else
+	(void)indicator;
 	#endif
 	Mutex.lock();
 }
 
 void Buffer::__buffer::unlock(const char* indicator = nullptr){
-	#if _LINSERDEBUG >= 4
+	#if LINSERDEBUG >= 4
 	if(indicator){
 		std::cout << "[LinSer] unlocking: " << indicator << std::endl;
 	}
+	#else
+	(void)indicator;
 	#endif
 	Mutex.unlock();
 }
@@ -76,7 +78,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 
 	// Check for errors
 	if (hSerial < 0) {
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Error " << std::to_string(errno) << " from open(): " << std::strerror(errno) << std::endl;
 		#endif
 		throw SerialException(
@@ -95,7 +97,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	// must have been initialized with a call to tcgetattr() overwise behaviour
 	// is undefined
 	if(tcgetattr(hSerial, &tty) != 0) {
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcgetattr(): " << std::strerror(errno) << std::endl;
 		#endif
 		throw SerialException(
@@ -109,19 +111,19 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	if(SP.P == SerParam::Parity::PAR_NONE){
 		tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity
 		tty.c_cflag &= ~PARODD; // clear parity odd bit, disabling odd parity
-		#if _LINSERDEBUG >= 3
+		#if LINSERDEBUG >= 2
 		std::cout << "[LinSer] Using no parity" << std::endl;
 		#endif
 	}
 	if(SP.P == SerParam::Parity::PAR_EVEN){
 		tty.c_cflag |=  PARENB;  // Set parity bit, enabling even parity
 		tty.c_cflag &= ~PARODD;  // clear parity odd bit, disabling odd parity
-		#if _LINSERDEBUG >= 3
+		#if LINSERDEBUG >= 2
 		std::cout << "[LinSer] Using even parity" << std::endl;
 		#endif
 	}
 	if(SP.P == SerParam::Parity::PAR_ODD){
-		#if _LINSERDEBUG >= 3
+		#if LINSERDEBUG >= 2
 		std::cout << "[LinSer] Using odd parity" << std::endl;
 		#endif
 		tty.c_cflag |= PARENB;  // Set parity bit, enabling parity
@@ -130,13 +132,13 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	// StopBits
 	if(SP.SB == SerParam::StopBits::ONE_STOP){
 		tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication
-		#if _LINSERDEBUG >= 3
+		#if LINSERDEBUG >= 2
 		std::cout << "[LinSer] using one stop bit" << std::endl;
 		#endif
 	}
 	if(SP.SB == SerParam::StopBits::TWO_STOP){
 		tty.c_cflag |= CSTOPB;  // Set stop field, two stop bits used in communication
-		#if _LINSERDEBUG >= 3
+		#if LINSERDEBUG >= 2
 		std::cout << "[LinSer] using two stop bits" << std::endl;
 		#endif
 	}
@@ -168,12 +170,12 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	tty.c_cc[VTIME] = ST.__VTIME;
 	tty.c_cc[VMIN]  = ST.__VMIN;
 
-	#if _LINSERDEBUG >= 3
+	#if LINSERDEBUG >= 2
 	std::cout << "[LinSer] VTime set to: " << (int)ST.__VTIME*100 << std::endl;
 	std::cout << "[LinSer] VMIN set to: " << (int)ST.__VMIN << std::endl;
 	#endif
 
-	#if _LINSERDEBUG >= 3
+	#if LINSERDEBUG >= 2
 	// Set in/out baud rate to be baudrate
 	std::cout << "[LinSer] Baudrate set to: ";
 	switch (SP.rate)
@@ -249,7 +251,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 
 	// Save tty settings, also checking for error
 	if (tcsetattr(hSerial, TCSANOW, &tty) != 0) {
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Error " << std::to_string(errno) << "from tcsetattr(): " << std::strerror(errno) << std::endl;
 		#endif
 		throw SerialException(
@@ -263,27 +265,24 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 
 	// start threads
 	IncomingBuffer.ThreadFunc = std::thread(ReadThreadFunc, std::ref(IncomingBuffer), std::ref(hSerial), std::ref(SerialHandleMutex));
-	OutGoingBuffer.ThreadFunc = std::thread(SendThreadFunc, std::ref(OutGoingBuffer), std::ref(hSerial), std::ref(SerialHandleMutex));
 }
 
 
 
 Serial::~Serial(){
-	#if _LINSERDEBUG >= 2
-	std::cout << "[LinSer] Closing Serial threads" << std::endl;
+	#if LINSERDEBUG >= 3
+	std::cout << "[LinSer] Closing Serial thread" << std::endl;
 	#endif
 	IncomingBuffer.StopThread = true;
 	IncomingBuffer.ThreadFunc.join();
-	OutGoingBuffer.StopThread = true;
-	OutGoingBuffer.ThreadFunc.join();
 	
 	SerialHandleMutex.lock();
 	close(hSerial);
 	SerialHandleMutex.unlock();
 	hSerial = 0;
 
-	#if _LINSERDEBUG >= 2
-	std::cout << "[LinSer] Serial threads closed" << std::endl;
+	#if LINSERDEBUG >= 3
+	std::cout << "[LinSer] Serial thread closed" << std::endl;
 	#endif
 }
 
@@ -294,37 +293,37 @@ unsigned int Serial::available() {
 	return size;
 }
 
-unsigned int Serial::availableForWrite(){
-	OutGoingBuffer.lock();
-	unsigned int size = OutGoingBuffer.getBufferSize();
-	OutGoingBuffer.unlock();
-	return SERIALBUFFERSIZE - size;
-}
+// unsigned int Serial::availableForWrite(){
+// 	OutGoingBuffer.lock();
+// 	unsigned int size = OutGoingBuffer.getBufferSize();
+// 	OutGoingBuffer.unlock();
+// 	return SERIALBUFFERSIZE - size;
+// }
 
-void Serial::flush(const unsigned int refreshrate){
-	while(1){
-		OutGoingBuffer.lock("flush");
-		if(OutGoingBuffer.getBufferSize() == 0){
-			OutGoingBuffer.unlock("flush"); // unlock buffer
-			break;
-		}
-		OutGoingBuffer.unlock("flush");
-		// keep mutex unlocked for refreshrate
-		std::this_thread::sleep_for(std::chrono::milliseconds(refreshrate));
-	}
-}
+// void Serial::flush(const unsigned int refreshrate){
+// 	while(1){
+// 		OutGoingBuffer.lock("flush");
+// 		if(OutGoingBuffer.getBufferSize() == 0){
+// 			OutGoingBuffer.unlock("flush"); // unlock buffer
+// 			break;
+// 		}
+// 		OutGoingBuffer.unlock("flush");
+// 		// keep mutex unlocked for refreshrate
+// 		std::this_thread::sleep_for(std::chrono::milliseconds(refreshrate));
+// 	}
+// }
 
 void Serial::clearBuffer(){
-	OutGoingBuffer.lock("clearbuffer");
+	// OutGoingBuffer.lock("clearbuffer");
 	IncomingBuffer.lock("clearbuffer");
 		IncomingBuffer.flushbuffer();
-		OutGoingBuffer.flushbuffer();
-	OutGoingBuffer.unlock("clearbuffer");
+		// OutGoingBuffer.flushbuffer();
+	// OutGoingBuffer.unlock("clearbuffer");
 	IncomingBuffer.unlock("clearbuffer");
 }
 
 void Serial::setTimeout(const SerTimeOut& ST){
-	OutGoingBuffer.lock("SetTimeout");
+	// OutGoingBuffer.lock("SetTimeout");
 	IncomingBuffer.lock("SetTimeout");
 	SerialHandleMutex.lock();
 
@@ -335,7 +334,7 @@ void Serial::setTimeout(const SerTimeOut& ST){
 
 	// Read in existing settings, and handle any error
 	if(tcgetattr(hSerial, &tty) != 0) {
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcgetattr(): " << std::strerror(errno) << std::endl;
 		#endif
 		throw SerialException(
@@ -350,7 +349,7 @@ void Serial::setTimeout(const SerTimeOut& ST){
 
 	// Save tty settings, also checking for error
 	if (tcsetattr(hSerial, TCSANOW, &tty) != 0) {
-		#if _LINSERDEBUG >= 1
+		#if LINSERDEBUG >= 1
 		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcsetattr(): " << std::strerror(errno) << std::endl;
 		#endif
 		throw SerialException(
@@ -360,7 +359,7 @@ void Serial::setTimeout(const SerTimeOut& ST){
 	}
 
 	SerialHandleMutex.unlock();
-	OutGoingBuffer.unlock("SetTimeout");
+	// OutGoingBuffer.unlock("SetTimeout");
 	IncomingBuffer.unlock("SetTimeout");
 }
 
@@ -400,13 +399,19 @@ unsigned int Serial::readBytesUntil(char* buffer, const char terminator, unsigne
 	return i;
 }
 
-std::string Serial::readLine(const std::string& newline, std::size_t timeout_ms){
+std::string Serial::readLine(const std::string& newline, int64_t timeout_ms){
 	std::string S = readStringUntil(newline);
 	if(S.find(newline) == std::string::npos){
 		// newline not yet found, wait max time out untill newline character
 		auto start = std::chrono::system_clock::now();
-		while((std::chrono::system_clock::now() - start).count() < timeout_ms * 1000 && IncomingBuffer.getBufferSize() == 0) {}
-		S += readStringUntil(newline);
+		while(true){
+			while((std::chrono::system_clock::now() - start).count() < timeout_ms * 1000 && IncomingBuffer.getBufferSize() == 0) {}
+			S += readStringUntil(newline);
+			// exit if new line was found or timeout was reached
+			if(S.find(newline) != std::string::npos || (std::chrono::system_clock::now() - start).count() >= timeout_ms * 1000)
+				break;
+		}
+		// check if newline was eventually found or not
 		if(S.find(newline) == std::string::npos)
 			throw NoEOLTimeoutException();
 	}
@@ -449,44 +454,24 @@ std::string Serial::readStringUntil(const std::string& substr){
 }
 
 void Serial::writeByte(const char val){
-	OutGoingBuffer.lock("writebyte");
-	try{
-		OutGoingBuffer.push(val);
-		OutGoingBuffer.unlock("writebyte");
-	}
-	catch(Buffer::SerialBufferException const &e){
-		OutGoingBuffer.unlock("writebyte");
-		int i = 0;
-		for(; (i < 10) && !this->availableForWrite(); i++){
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
-			if(i == 10){
-				#if _LINSERDEBUG >= 1
-				std::cout << "[LinSer] Error: No room in outgoing buffer after 50ms" << std::endl;
-				#endif
-				throw WriteRetryTimeoutException();
-			}
-		}
-		if(i < 10)
-			writeByte(val); // try again
-	}
+	char buf[1] = {val};
+	writeBytes(buf, 1);
 }
 
 void Serial::writeStr(const std::string str){
-	OutGoingBuffer.lock("writestr");
-	for(char const &c : str)
-	{
-		OutGoingBuffer.push(c);
-	}
-	OutGoingBuffer.unlock("writestr");
+	writeBytes(str.c_str(), str.length());
 }
 
 void Serial::writeBytes(const char* buf, const unsigned int len){
-	OutGoingBuffer.lock("writebytes");
-	for(unsigned int i = 0; i < len; i++)
-	{
-		OutGoingBuffer.push(buf[i]);
+	SerialHandleMutex.lock();
+	int n = write(hSerial, buf, len);
+	SerialHandleMutex.unlock();
+	if(n < 0){
+		// error occurred. Inform user
+		#if LINSERDEBUG >= 1
+		std::cout << "[LinSer] Error writing: " << std::strerror(errno) << std::endl;
+		#endif
 	}
-	OutGoingBuffer.unlock("writebytes");
 }
 
 int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mutex& SHMutex){
@@ -516,7 +501,7 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 		// error
 		if (n < 0) {
 			// error occurred. Inform user
-			#if _LINSERDEBUG >= 1
+			#if LINSERDEBUG >= 1
 			std::cout << "[LinSer] Error reading: " << std::strerror(errno) << std::endl;
 			#endif
 		}
@@ -524,14 +509,13 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 		if(n > 0){
 			try{
 				IncomingBuffer.lock("readthread");
-				for(int i = 0; i < n && !IncomingBuffer.StopThread; i++){
+				for(int i = 0; i < n && !IncomingBuffer.StopThread; i++)
 					IncomingBuffer.push(szBuff[i]);
-				}
 				IncomingBuffer.unlock("readthread");
 			}
 			catch(Buffer::SerialBufferException const &e){
 				std::cerr << e.what() << std::endl;
-				#if _LINSERDEBUG >= 1
+				#if LINSERDEBUG >= 1
 				std::cout << "[LinSer] Stopping reading thread due to exception " << std::endl;
 				#endif
 				IncomingBuffer.unlock("readthread-crash");
@@ -541,56 +525,8 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 		}
 	}
 
-	#if _LINSERDEBUG >= 2
+	#if LINSERDEBUG >= 3
 	std::cout << "[LinSer] Stopped reading thread" << std::endl;
-	#endif
-
-	return 0;
-}
-
-int Serial::SendThreadFunc(Buffer::Buffer& OutGoingBuffer, int& hSerial, std::mutex& SHMutex){
-	while(!OutGoingBuffer.StopThread){
-		std::this_thread::sleep_for(std::chrono::milliseconds(SERIALWRITESLEEPTIME));
-		char szBuff[INCOMINGBUFFERSIZE] = {0};
-
-		memset(&szBuff, '\0', sizeof(szBuff));
-
-		OutGoingBuffer.lock("SendThreadFunc Getbuffersize");
-		unsigned int charinbuffer = OutGoingBuffer.getBufferSize();
-		OutGoingBuffer.unlock("SendThreadFunc Getbuffersize");
-		if(charinbuffer > 0){
-			OutGoingBuffer.lock("SendThreadFunc content access");
-			try{
-				for(unsigned int i = 0; i < charinbuffer && !OutGoingBuffer.StopThread; i++){
-					szBuff[i] = OutGoingBuffer.pop();
-				}
-			}
-			catch(Buffer::SerialBufferException const &e){
-				std::cerr << e.what() << std::endl;
-				#if _LINSERDEBUG >= 1
-				std::cout << "[LinSer] Stopping writing thread due to exception " << std::endl;
-				#endif
-				OutGoingBuffer.unlock("SendThreadFunc content access-crash");
-				while(!OutGoingBuffer.StopThread){}
-				return -1;
-			}
-			OutGoingBuffer.unlock("SendThreadFunc content access");
-
-			SHMutex.lock();
-			int n = write(hSerial, szBuff, sizeof(szBuff));
-			SHMutex.unlock();
-
-			if(n < 0){
-				// error occurred. Inform user
-				#if _LINSERDEBUG >= 1
-				std::cout << "[LinSer] Error writing: " << std::strerror(errno) << std::endl;
-				#endif
-			}
-		}
-	}
-
-	#if _LINSERDEBUG >= 2
-	std::cout << "[LinSer] Stopped sending thread" << std::endl;
 	#endif
 
 	return 0;
