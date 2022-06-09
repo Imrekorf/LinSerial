@@ -532,4 +532,4 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 	return 0;
 }
 
-}; // end of LinSer namespace
+} // end of LinSer namespace
