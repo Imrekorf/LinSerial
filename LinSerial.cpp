@@ -245,8 +245,6 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	}
 	#endif
 
-	cfsetispeed(&tty, (speed_t)SP.rate);
-	cfsetospeed(&tty, (speed_t)SP.rate);
 	cfsetspeed(&tty, (speed_t)SP.rate);
 
 	// Save tty settings, also checking for error
