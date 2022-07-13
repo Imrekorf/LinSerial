@@ -398,7 +398,7 @@ namespace LinSer {
 		 * 
 		 * @throws NoEOLTimeoutException exception is line_end is not received after timeout_ms
 		 */
-		std::string readLine(const std::string& line_end = "\r\n", int64_t timeout_ms = 500);
+		std::string readLine(const std::string& line_end = "\n", int64_t timeout_ms = 500);
 
 		/**
 		 * @brief reads the Incoming buffer into a string
