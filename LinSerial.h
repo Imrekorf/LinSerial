@@ -165,7 +165,7 @@ namespace LinSer {
 			 */
 			void unlock(const char* indicator);
 		} Buffer;
-	}; // end of namespace Buffer
+	} // end of namespace Buffer
 
 
 
