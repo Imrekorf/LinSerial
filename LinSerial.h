@@ -28,17 +28,47 @@
 #define SERIALREADSLEEPTIME 10
 #endif
 
+#define LINSERLOG_ERRORS 1
+#define LINSERLOG_INFO   2
+#define LINSERLOG_DEBUG  4
+#define LINSERLOG_MUTEX  128
+
 /**
- * @brief Enables debug messages for certain functions
- * 0 = no debug
- * 1 = errors
- * 2 = Serial setup messages
- * 3 = debug
- * 4 = debug + mutex lock changes
+ * @brief Enables debug messages for certain functions depending on bits set
+ * All bits clear means no messages will be logged
+ * bit1 = errors
+ * bit2 = information messages
+ * bit3 = debug
+ * bit7 = mutex lock changes, this is used by developers.
  */
-#ifndef LINSERDEBUG
-#define LINSERDEBUG 2
+#ifndef LINSERLOGLEVEL
+#define LINSERLOGLEVEL (LINSERLOG_ERRORS | LINSERLOG_INFO)
 #endif
+/**@}*/
+
+/** @defgroup SerialBufferMacros */
+#define LinSerLogPre(level) printf("[LinSer][%s] ", level)
+#if (LINSERLOGLEVEL & LINSERLOG_ERRORS)
+	#define LinSerLogError(...)   LinSerLogPre("Error"); printf(__VA_ARGS__)
+#else
+	#define LinSerLogInfo (...)
+#endif
+#if (LINSERLOGLEVEL & LINSERLOG_INFO) 
+	#define LinSerLogInfo(...)    LinSerLogPre("Info "); printf(__VA_ARGS__)
+#else 
+	#define LinSerLogInfo(...)
+#endif
+#if (LINSERLOGLEVEL & LINSERLOG_DEBUG)
+	#define LinSerLogDebug(...)   LinSerLogPre("Debug"); printf(__VA_ARGS__)
+#else
+	#define LinSerLogDebug(...)
+#endif
+#if (LINSERLOGLEVEL & LINSERLOG_MUTEX)
+	#define LinSerLogMutex(msg, ...)   LinSerLogPre("Mutex"); printf(msg, __VA_ARGS__)
+#else
+	#define LinSerLogMutex(msg, ...)   (void)__VA_ARGS__
+#endif
+
 /**@}*/
 
 namespace LinSer {
@@ -90,7 +120,7 @@ namespace LinSer {
 
 		/**
 		 * @brief Serial buffer overflow exception when trying to push too much data to a buffer
-		 * Mas size of the Serial buffer is based on SERIALBUFFERSIZE
+		 * size of the Serial buffer is based on SERIALBUFFERSIZE
 		 */
 		class SerialBufferOverflowException: public SerialBufferException {
 		public:
@@ -98,10 +128,7 @@ namespace LinSer {
 				SerialBufferException("Buffer overflow during push operation", BEType::Overflow, byte) {}
 		};
 
-		/**
-		 * @brief Serial buffer underflow exception when trying to pop too much data from a buffer
-		 * 
-		 */
+		/** Serial buffer underflow exception when trying to pop too much data from a buffer */
 		class SerialBufferUnderflowException: public SerialBufferException {
 		public:
 			explicit SerialBufferUnderflowException(unsigned char byte) : 
@@ -156,14 +183,14 @@ namespace LinSer {
 			 * 
 			 * @param indicator If debugging is enabled by defining _LINSERDEBUGMUTEX then an extra message is printed as to which process locks the mutex
 			 */
-			void lock(const char* indicator);
+			void lock(const char* const indicator);
 
 			/**
 			 * @brief Unlocks this buffer's mutex
 			 * 
 			 * @param indicator If debugging is enabled by defining _LINSERDEBUGMUTEX then an extra message is printed as to which process unlocks the mutex
 			 */
-			void unlock(const char* indicator);
+			void unlock(const char* const indicator);
 		} Buffer;
 	}; // end of namespace Buffer
 
@@ -212,9 +239,7 @@ namespace LinSer {
 	 * By default SerParam initializes with a baudrate of 9600, no parity checking, 1 stop bit and a byte size of 8.
 	 */
 	struct SerParam {
-		/**
-		 * @brief Baudrate enum for specificing the baudrate. 
-		 */
+		/** @brief Baudrate enum for specificing the baudrate. */
 		enum Baudrate {
 			Baud0 		= 0000000,
 			Baud50		= 0000001,
@@ -238,9 +263,9 @@ namespace LinSer {
 			Baud460800  = 0010004,
 		};
 
-		/**
-		 * @brief Stop bit enum for specifing the amount of stop bits in communication
-		 */
+		static std::map<Baudrate, int> BaudrateString;
+
+		/** @brief Stop bit enum for specifing the amount of stop bits in communication */
 		enum StopBits {
 			ONE_STOP, // clear CSTOPB
 			TWO_STOP  // set CSTOPB
@@ -496,4 +521,4 @@ namespace LinSer {
 		}
 
 	};
-} // end of namespace WinSer
+} // end of namespace LinSer

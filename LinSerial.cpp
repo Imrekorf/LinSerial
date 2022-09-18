@@ -13,15 +13,26 @@
 // based on: https://web.archive.org/web/20180127160838/http://bd.eduweb.hhs.nl/micprg/pdf/serial-win.pdf
 // Linux version rewrite based on: https://blog.mbedded.ninja/programming/operating-systems/linux/linux-serial-ports-using-c-cpp/
 
-namespace LinSer {
+using namespace LinSer;
+
+std::map<SerParam::Baudrate, int> SerParam::BaudrateString  = {
+	{SerParam::Baud0, 		0}, 	 {SerParam::Baud50, 	50}, 
+	{SerParam::Baud75, 		75}, 	 {SerParam::Baud110, 	110},
+	{SerParam::Baud134, 	14}, 	 {SerParam::Baud150, 	150}, 
+	{SerParam::Baud200, 	200},	 {SerParam::Baud300, 	300},
+	{SerParam::Baud600, 	600},	 {SerParam::Baud1200, 	1200}, 
+	{SerParam::Baud1800, 	1800}, 	 {SerParam::Baud2400, 	2400},
+	{SerParam::Baud4800, 	4800}, 	 {SerParam::Baud9600, 	9600}, 
+	{SerParam::Baud19200, 	19200},  {SerParam::Baud38400, 	38400},
+	{SerParam::Baud57600, 	57600},  {SerParam::Baud115200, 115200}, 
+	{SerParam::Baud230400, 	230400}, {SerParam::Baud460800, 460800}
+};
 
 /**=========================== Buffer::_buffer functions =========================== **/
 void Buffer::__buffer::push(char c){
 	// check if buffer is full
 	if(count >= SERIALBUFFERSIZE){ 
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Buffer overflow!" << std::endl;
-		#endif
+		LinSerLogError("Buffer overflow!\n");
 		throw SerialBufferOverflowException(c); 
 	}
 	buff[count + front] = c;
@@ -30,9 +41,7 @@ void Buffer::__buffer::push(char c){
 
 char Buffer::__buffer::pop(void){
 	if(!count){ 
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Buffer underflow!" << std::endl;
-		#endif
+		LinSerLogError("Buffer underflow!\n");
 		throw SerialBufferUnderflowException(0);
 	}
 	front++;
@@ -49,25 +58,13 @@ inline unsigned int Buffer::__buffer::getBufferSize() const {
 	return count;
 }
 
-void Buffer::__buffer::lock(const char* indicator = nullptr){
-	#if LINSERDEBUG >= 4
-	if(indicator){
-		std::cout << "[LinSer] locking: " << indicator << std::endl;
-	}
-	#else
-	(void)indicator;
-	#endif
+void Buffer::__buffer::lock(const char* const indicator){
+	LinSerLogMutex("locking: %s\n", indicator);
 	Mutex.lock();
 }
 
-void Buffer::__buffer::unlock(const char* indicator = nullptr){
-	#if LINSERDEBUG >= 4
-	if(indicator){
-		std::cout << "[LinSer] unlocking: " << indicator << std::endl;
-	}
-	#else
-	(void)indicator;
-	#endif
+void Buffer::__buffer::unlock(const char* const indicator){
+	LinSerLogMutex("unlocking: %s\n", indicator);
 	Mutex.unlock();
 }
 
@@ -78,9 +75,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 
 	// Check for errors
 	if (hSerial < 0) {
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error " << std::to_string(errno) << " from open(): " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("%s from open(): %s\n", std::to_string(errno).c_str(), std::strerror(errno));
 		throw SerialException(
 			"Error " + std::to_string(errno) +
 			" from open(): " + std::strerror(errno),
@@ -97,9 +92,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	// must have been initialized with a call to tcgetattr() overwise behaviour
 	// is undefined
 	if(tcgetattr(hSerial, &tty) != 0) {
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcgetattr(): " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("%s from tcgetattr(): %s\n", std::to_string(errno).c_str(), std::strerror(errno));
 		throw SerialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr(): " + std::strerror(errno),
@@ -111,36 +104,26 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	if(SP.P == SerParam::Parity::PAR_NONE){
 		tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity
 		tty.c_cflag &= ~PARODD; // clear parity odd bit, disabling odd parity
-		#if LINSERDEBUG >= 2
-		std::cout << "[LinSer] Using no parity" << std::endl;
-		#endif
+		LinSerLogInfo("Using no parity\n");
 	}
 	if(SP.P == SerParam::Parity::PAR_EVEN){
 		tty.c_cflag |=  PARENB;  // Set parity bit, enabling even parity
 		tty.c_cflag &= ~PARODD;  // clear parity odd bit, disabling odd parity
-		#if LINSERDEBUG >= 2
-		std::cout << "[LinSer] Using even parity" << std::endl;
-		#endif
+		LinSerLogInfo("Using even parity\n");
 	}
 	if(SP.P == SerParam::Parity::PAR_ODD){
-		#if LINSERDEBUG >= 2
-		std::cout << "[LinSer] Using odd parity" << std::endl;
-		#endif
 		tty.c_cflag |= PARENB;  // Set parity bit, enabling parity
 		tty.c_cflag |= PARODD;  // Set parity odd bit, enabling odd parity
+		LinSerLogInfo("Using odd parity\n");
 	}
 	// StopBits
 	if(SP.SB == SerParam::StopBits::ONE_STOP){
 		tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication
-		#if LINSERDEBUG >= 2
-		std::cout << "[LinSer] using one stop bit" << std::endl;
-		#endif
+		LinSerLogInfo("Using one stop bit\n");
 	}
 	if(SP.SB == SerParam::StopBits::TWO_STOP){
 		tty.c_cflag |= CSTOPB;  // Set stop field, two stop bits used in communication
-		#if LINSERDEBUG >= 2
-		std::cout << "[LinSer] using two stop bits" << std::endl;
-		#endif
+		LinSerLogInfo("Using two stop bits\n");
 	}
 	tty.c_cflag &= ~CSIZE; // Clear all the size bits
 	// tty.c_cflag |= (tcflag_t)SP.bytesize; // set size bits
@@ -170,88 +153,16 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 	tty.c_cc[VTIME] = ST.__VTIME;
 	tty.c_cc[VMIN]  = ST.__VMIN;
 
-	#if LINSERDEBUG >= 2
-	std::cout << "[LinSer] VTime set to: " << (int)ST.__VTIME*100 << std::endl;
-	std::cout << "[LinSer] VMIN set to: " << (int)ST.__VMIN << std::endl;
-	#endif
+	LinSerLogDebug("VTime set to: %d\n", (int)ST.__VTIME*100);
+	LinSerLogDebug("VMIN set to:  %d\n", (int)ST.__VMIN);
 
-	#if LINSERDEBUG >= 2
-	// Set in/out baud rate to be baudrate
-	std::cout << "[LinSer] Baudrate set to: ";
-	switch (SP.rate)
-	{
-	case SerParam::Baud0:
-		std::cout << "B0" << std::endl;
-		break;
-	case SerParam::Baud50:
-		std::cout << "B50" << std::endl;
-		break;
-	case SerParam::Baud75:
-		std::cout << "B75" << std::endl;
-		break;
-	case SerParam::Baud110:
-		std::cout << "B110" << std::endl;
-		break;
-	case SerParam::Baud134:
-		std::cout << "B134" << std::endl;
-		break;
-	case SerParam::Baud150:
-		std::cout << "B150" << std::endl;
-		break;
-	case SerParam::Baud200:
-		std::cout << "B200" << std::endl;
-		break;
-	case SerParam::Baud300:
-		std::cout << "B300" << std::endl;
-		break;
-	case SerParam::Baud600:
-		std::cout << "B600" << std::endl;
-		break;
-	case SerParam::Baud1200:
-		std::cout << "B1200" << std::endl;
-		break;
-	case SerParam::Baud1800:
-		std::cout << "B1800" << std::endl;
-		break;
-	case SerParam::Baud2400:
-		std::cout << "B2400" << std::endl;
-		break;
-	case SerParam::Baud4800:
-		std::cout << "B4800" << std::endl;
-		break;
-	case SerParam::Baud9600:
-		std::cout << "B9600" << std::endl;
-		break;
-	case SerParam::Baud19200:
-		std::cout << "B19200" << std::endl;
-		break;
-	case SerParam::Baud38400:
-		std::cout << "B38400" << std::endl;
-		break;
-	case SerParam::Baud57600:
-		std::cout << "B57600" << std::endl;
-		break;
-	case SerParam::Baud115200:
-		std::cout << "B115200" << std::endl;
-		break;
-	case SerParam::Baud230400:
-		std::cout << "B230400" << std::endl;
-		break;
-	case SerParam::Baud460800:
-		std::cout << "B460800" << std::endl;
-		break;
-	default:
-		break;
-	}
-	#endif
+	LinSerLogInfo("Baudrate set to: %d\n", SerParam::BaudrateString[SP.rate]);
 
 	cfsetspeed(&tty, (speed_t)SP.rate);
 
 	// Save tty settings, also checking for error
 	if (tcsetattr(hSerial, TCSANOW, &tty) != 0) {
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error " << std::to_string(errno) << "from tcsetattr(): " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("%s from tcsetattr(): %s\n", std::to_string(errno).c_str(), std::strerror(errno));
 		throw SerialException(
 			"Error " + std::to_string(errno) +
 			"from tcsetattr(): " + std::strerror(errno),
@@ -268,9 +179,7 @@ Serial::Serial(const char* Port, const SerParam& SP, const SerTimeOut& ST){
 
 
 Serial::~Serial(){
-	#if LINSERDEBUG >= 3
-	std::cout << "[LinSer] Closing Serial thread" << std::endl;
-	#endif
+	LinSerLogInfo("Closing serial thread...\n");
 	IncomingBuffer.StopThread = true;
 	IncomingBuffer.ThreadFunc.join();
 	
@@ -279,49 +188,25 @@ Serial::~Serial(){
 	SerialHandleMutex.unlock();
 	hSerial = 0;
 
-	#if LINSERDEBUG >= 3
-	std::cout << "[LinSer] Serial thread closed" << std::endl;
+	#if LINSERLOGLEVEL >= 3
+	LinSerLogInfo("closed!\n");
 	#endif
 }
 
 unsigned int Serial::available() {
-	IncomingBuffer.lock();
+	IncomingBuffer.lock("Available");
 	unsigned int size = IncomingBuffer.getBufferSize();
-	IncomingBuffer.unlock();
+	IncomingBuffer.unlock("Available");
 	return size;
 }
 
-// unsigned int Serial::availableForWrite(){
-// 	OutGoingBuffer.lock();
-// 	unsigned int size = OutGoingBuffer.getBufferSize();
-// 	OutGoingBuffer.unlock();
-// 	return SERIALBUFFERSIZE - size;
-// }
-
-// void Serial::flush(const unsigned int refreshrate){
-// 	while(1){
-// 		OutGoingBuffer.lock("flush");
-// 		if(OutGoingBuffer.getBufferSize() == 0){
-// 			OutGoingBuffer.unlock("flush"); // unlock buffer
-// 			break;
-// 		}
-// 		OutGoingBuffer.unlock("flush");
-// 		// keep mutex unlocked for refreshrate
-// 		std::this_thread::sleep_for(std::chrono::milliseconds(refreshrate));
-// 	}
-// }
-
 void Serial::clearBuffer(){
-	// OutGoingBuffer.lock("clearbuffer");
 	IncomingBuffer.lock("clearbuffer");
 		IncomingBuffer.flushbuffer();
-		// OutGoingBuffer.flushbuffer();
-	// OutGoingBuffer.unlock("clearbuffer");
 	IncomingBuffer.unlock("clearbuffer");
 }
 
 void Serial::setTimeout(const SerTimeOut& ST){
-	// OutGoingBuffer.lock("SetTimeout");
 	IncomingBuffer.lock("SetTimeout");
 	SerialHandleMutex.lock();
 
@@ -332,9 +217,7 @@ void Serial::setTimeout(const SerTimeOut& ST){
 
 	// Read in existing settings, and handle any error
 	if(tcgetattr(hSerial, &tty) != 0) {
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcgetattr(): " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("%s from tcgetattr(): %s\n", std::to_string(errno).c_str(), std::strerror(errno));
 		throw SerialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr: " + std::strerror(errno),
@@ -345,11 +228,13 @@ void Serial::setTimeout(const SerTimeOut& ST){
 	tty.c_cc[VTIME] = ST.__VTIME;
 	tty.c_cc[VMIN] = ST.__VMIN;
 
+	LinSerLogDebug("VTime set to: %d\n", (int)ST.__VTIME*100);
+	LinSerLogDebug("VMIN set to:  %d\n", (int)ST.__VMIN);
+
+
 	// Save tty settings, also checking for error
 	if (tcsetattr(hSerial, TCSANOW, &tty) != 0) {
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error " << std::to_string(errno) << " from tcsetattr(): " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("%s from tcsetattr(): %s\n", std::to_string(errno).c_str(), std::strerror(errno));
 		throw SerialException(
 			"Error " + std::to_string(errno) +
 			"from tcsetattr: " + std::strerror(errno),
@@ -357,7 +242,6 @@ void Serial::setTimeout(const SerTimeOut& ST){
 	}
 
 	SerialHandleMutex.unlock();
-	// OutGoingBuffer.unlock("SetTimeout");
 	IncomingBuffer.unlock("SetTimeout");
 }
 
@@ -466,9 +350,7 @@ void Serial::writeBytes(const char* buf, const unsigned int len){
 	SerialHandleMutex.unlock();
 	if(n < 0){
 		// error occurred. Inform user
-		#if LINSERDEBUG >= 1
-		std::cout << "[LinSer] Error writing: " << std::strerror(errno) << std::endl;
-		#endif
+		LinSerLogError("during write: %s\n", std::strerror(errno));
 	}
 }
 
@@ -499,9 +381,7 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 		// error
 		if (n < 0) {
 			// error occurred. Inform user
-			#if LINSERDEBUG >= 1
-			std::cout << "[LinSer] Error reading: " << std::strerror(errno) << std::endl;
-			#endif
+			LinSerLogError("during read: %s\n", std::strerror(errno));
 		}
 		// read something
 		if(n > 0){
@@ -512,22 +392,14 @@ int Serial::ReadThreadFunc(Buffer::Buffer& IncomingBuffer, int& hSerial, std::mu
 				IncomingBuffer.unlock("readthread");
 			}
 			catch(Buffer::SerialBufferException const &e){
-				std::cerr << e.what() << std::endl;
-				#if LINSERDEBUG >= 1
-				std::cout << "[LinSer] Stopping reading thread due to exception " << std::endl;
-				#endif
+				LinSerLogError("Stopping reading thread due to exception %s\n", e.what());
 				IncomingBuffer.unlock("readthread-crash");
 				while(!IncomingBuffer.StopThread){}
 				return -1;
 			}
 		}
 	}
-
-	#if LINSERDEBUG >= 3
-	std::cout << "[LinSer] Stopped reading thread" << std::endl;
-	#endif
+	LinSerLogDebug("Stopping reading thread\n");
 
 	return 0;
 }
-
-} // end of LinSer namespace
