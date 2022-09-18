@@ -3,8 +3,9 @@
 #include <unistd.h>
 
 int main() {
-    std::cout << LINSERDEBUG << std::endl;
-    LinSer::Serial port("/dev/ttyACM1");
+    std::cout << "[LinSer] debug: " << (LINSERLOGLEVEL == 3 ? "on" : "off") << std::endl;
+    
+    LinSer::Serial port("/dev/tty10");
     // expands to: 
 	// LinSer::Serial port("/dev/ttyACM0", LinSer::SerParam(
     //     LinSer::SerParam::Baudrate::Baud9600,
