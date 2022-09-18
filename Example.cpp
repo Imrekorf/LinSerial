@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 int main() {
-    std::cout << "[LinSer] debug: " << (LINSERLOGLEVEL == 3 ? "on" : "off") << std::endl;
+    LinSerLogInfo("Debug: %s", (LINSERLOGLEVEL & LINSERLOG_DEBUG ? "on" : "off"));
     
     LinSer::Serial port("/dev/tty10");
     // expands to: 
