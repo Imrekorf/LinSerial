@@ -4,12 +4,12 @@
 #include <iostream>
 #include "helpers.h"
 
-std::string execute(std::string cmd)
+std::string execute(const std::string& cmd)
 {
     //todo: silence output to terminal
     std::array<char, 128> buffer;
     std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen((cmd).c_str(), "r"), pclose);
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
     if (!pipe) {
         throw std::runtime_error("popen() failed!");
     }
@@ -34,7 +34,7 @@ std::vector<std::string> str_split(std::string string, const std::string& delimi
 
 std::vector<std::string> get_file_names(const std::string& path)
 {
-    //todo: handle if folder does not exist or no permission
     std::string response = execute("ls " + path);
+    // When failed, sends output to std::err so this is empty. Threat same as no files
     return str_split(response, "\n");
 }
