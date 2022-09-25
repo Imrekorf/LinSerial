@@ -2,12 +2,17 @@
 #include <tuple>
 #include "helpers.h"
 #include "pts.h"
+#include <iostream>
 
-std::tuple<std::string, std::string> setup_pts()
+static std::tuple<std::string, std::string> tunnel = std::tie("", "");
+
+std::tuple<std::string, std::string> setup_pts(bool force_new)
 {
-    //todo: check if socat installed
+    if (!force_new && std::get<0>(tunnel) != "" && std::get<1>(tunnel) != ""){
+        return tunnel;
+    }
+
     const std::string DEVICE_DIR = "/dev/pts/";
-    std::tuple<std::string, std::string> tunnel = std::tie("", "");
     auto original_files = get_file_names(DEVICE_DIR);
 
     std::thread([](){
@@ -32,6 +37,6 @@ std::tuple<std::string, std::string> setup_pts()
             break;
         }
     }
-
+    
     return tunnel;
 }
