@@ -11,8 +11,8 @@ std::tuple<std::string, std::string> setup_pts()
     auto original_files = get_file_names(DEVICE_DIR);
 
     std::thread([](){
-        //todo: shut down?
-        execute("socat -d -d pty,raw,echo=0 pty,raw,echo=0");
+        // todo: shut down 
+        execute("socat -d -d pty,raw,echo=0 pty,raw,echo=0 2>&1");
     }).detach();
 
     // Hacky way to set up a tunnel which can be used to create LinSerial communication
