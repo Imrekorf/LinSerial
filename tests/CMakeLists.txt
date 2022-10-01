@@ -1,11 +1,5 @@
-if (NOT UNIX)
-    message("FATAL: Building tests is only supported on unix")
-    return()
-endif()
-
 if(NOT DEFINED SOCAT)
-    message("FATAL: Needs socat to run tests - https://linux.die.net/man/1/socat")
-    return()
+    message("WARNING: Could not determine whether socat installed or not.\nSocat is needed for the test suite - https://linux.die.net/man/1/socat")
 endif()
 
 include_directories (doctest)

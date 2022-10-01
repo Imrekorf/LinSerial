@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.10)
 
 project(LinSerial)
 
+if (NOT UNIX)
+    message("FATAL: Building is only supported on unix")
+    return()
+endif()
+
 option(BUILD_EXAMPLE "Build example program" ON)
 option(BUILD_TESTS "Build tests" ON)
 
