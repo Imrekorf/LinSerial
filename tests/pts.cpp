@@ -38,7 +38,7 @@ std::tuple<std::string, std::string> setup_pts()
 
     is.close();
     if (std::get<0>(tunnel) == "invalid" || std::get<1>(tunnel) == INVALID_PORT){
-        throw std::runtime_error("pts: Could not setup tunnel");
+        throw std::runtime_error("pts: Could not setup tunnel - is socat installed?");
     }
 
     return tunnel;
