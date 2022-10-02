@@ -1,42 +1,39 @@
 #include <thread>
 #include <tuple>
+#include <iostream>
+#include <thread>
+#include <chrono>
+#include <fstream>
 #include "helpers.h"
 #include "pts.h"
-#include <iostream>
 
-static std::tuple<std::string, std::string> tunnel = std::tie("", "");
-
-std::tuple<std::string, std::string> setup_pts(bool force_new)
+std::tuple<std::string, std::string> setup_pts()
 {
-    if (!force_new && std::get<0>(tunnel) != "" && std::get<1>(tunnel) != ""){
-        return tunnel;
-    }
+    const std::string INVALID_PORT = "invalid";
+    std::tuple<std::string, std::string> tunnel = std::tie(INVALID_PORT, INVALID_PORT);
 
-    const std::string DEVICE_DIR = "/dev/pts/";
-    auto original_files = get_file_names(DEVICE_DIR);
-
-    std::thread([](){
-        // todo: shut down 
-        execute("socat -d -d pty,raw,echo=0 pty,raw,echo=0 2>&1");
-    }).detach();
-
-    // Hacky way to set up a tunnel which can be used to create LinSerial communication
-    auto start_ts = std::chrono::steady_clock::now();
-    const int TIMEOUT_MS = 5000;
-    while(true){
-        std::this_thread::sleep_for (std::chrono::milliseconds(500));
-        auto current_files = get_file_names(DEVICE_DIR);
-        auto nonintersecting = find_nonintersecting_elements(original_files, current_files); 
-        if (nonintersecting.size() == 2){
-            tunnel = std::make_tuple(DEVICE_DIR + nonintersecting[0], DEVICE_DIR + nonintersecting[1]);
-            break;
-        }
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - start_ts).count() > TIMEOUT_MS){
-            throw std::runtime_error("Setup failed: timed out setting up tunnel");
-            break;
-        }
-    }
+    const std::string output_file = "socat_output.txt";
+    system(("(sh -c '(echo PID: $$; exec socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " + output_file +" 2>&1')&").c_str());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::ifstream is(output_file);
     
+    const std::string DEVICE_DIR = "/dev/pts/";
+    std::string line;
+    while (std::getline(is, line)){
+        int offset = line.find(DEVICE_DIR);
+        if (offset == std::string::npos) continue;
+        std::string device = line.substr(offset, line.length() - offset);
+        if (std::get<0>(tunnel) == INVALID_PORT){
+            tunnel = std::make_tuple(device, INVALID_PORT);
+        } else {
+            tunnel = std::make_tuple(std::get<0>(tunnel), device);
+        }
+    }
+
+    is.close();
+    if (std::get<0>(tunnel) == "invalid" || std::get<1>(tunnel) == INVALID_PORT){
+        throw std::runtime_error("pts: Could not setup tunnel");
+    }
+
     return tunnel;
 }
