@@ -4,14 +4,14 @@
 #include <unistd.h>
 #include <tuple>
 #include "doctest.h"
-#include "pts.h"
+#include "pseudoterminal.h"
 #include "LinSerial.h"
 
 TEST_SUITE ("communication_tests")
 {
     TEST_CASE ("read_single_line")
     {
-        auto tunnel = setup_pts();
+        auto tunnel = pseudoterminal::setup();
         LinSer::Serial writer(std::get<1>(tunnel).c_str());
         LinSer::Serial receiver(std::get<0>(tunnel).c_str());
         
@@ -30,6 +30,6 @@ TEST_SUITE ("communication_tests")
         });
         writer << "this is a line\nthis is another\n";
         receiver_thread.join();
-        pts_teardown();
+        pseudoterminal::teardown();
     }
 };
