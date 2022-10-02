@@ -4,29 +4,35 @@
 #include <thread>
 #include <chrono>
 #include <fstream>
+#include <signal.h>
 #include "helpers.h"
 #include "pts.h"
+
+const std::string OUTPUT_FILE = "socat_output.txt";
+static int socat_pid = -1;
 
 std::tuple<std::string, std::string> setup_pts()
 {
     const std::string INVALID_PORT = "invalid";
     std::tuple<std::string, std::string> tunnel = std::tie(INVALID_PORT, INVALID_PORT);
 
-    const std::string output_file = "socat_output.txt";
-    system(("(sh -c '(echo PID: $$; exec socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " + output_file +" 2>&1')&").c_str());
+    std::string socat_str = execute("((socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " +  OUTPUT_FILE +" 2>&1)& echo $!");
+    socat_pid = std::stoi(socat_str);
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    std::ifstream is(output_file);
+    std::ifstream is(OUTPUT_FILE);
     
     const std::string DEVICE_DIR = "/dev/pts/";
     std::string line;
     while (std::getline(is, line)){
         int offset = line.find(DEVICE_DIR);
         if (offset == std::string::npos) continue;
-        std::string device = line.substr(offset, line.length() - offset);
+        std::string device = line.substr(offset);
         if (std::get<0>(tunnel) == INVALID_PORT){
             tunnel = std::make_tuple(device, INVALID_PORT);
         } else {
             tunnel = std::make_tuple(std::get<0>(tunnel), device);
+            break;
         }
     }
 
@@ -36,4 +42,9 @@ std::tuple<std::string, std::string> setup_pts()
     }
 
     return tunnel;
+}
+
+void pts_teardown()
+{
+    kill(socat_pid, SIGTERM);
 }
