@@ -14,5 +14,6 @@ TEST_SUITE ("time_out_tests")
         auto tunnel = setup_pts();
         LinSer::Serial receiver(std::get<0>(tunnel).c_str());
         CHECK_THROWS(receiver.readLine());
+        pts_teardown();
     }
 };

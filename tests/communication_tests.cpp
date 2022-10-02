@@ -30,5 +30,6 @@ TEST_SUITE ("communication_tests")
         });
         writer << "this is a line\nthis is another\n";
         receiver_thread.join();
+        pts_teardown();
     }
 };
