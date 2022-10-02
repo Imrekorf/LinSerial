@@ -6,12 +6,12 @@
 #include <fstream>
 #include <signal.h>
 #include "helpers.h"
-#include "pts.h"
+#include "pseudoterminal.h"
 
 const std::string OUTPUT_FILE = "socat_output.txt";
 static int socat_pid = -1;
 
-std::tuple<std::string, std::string> setup_pts()
+std::tuple<std::string, std::string> pseudoterminal::setup()
 {
     const std::string INVALID_PORT = "invalid";
     std::tuple<std::string, std::string> tunnel = std::tie(INVALID_PORT, INVALID_PORT);
@@ -44,7 +44,7 @@ std::tuple<std::string, std::string> setup_pts()
     return tunnel;
 }
 
-void pts_teardown()
+void pseudoterminal::teardown()
 {
     kill(socat_pid, SIGTERM);
 }
