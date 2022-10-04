@@ -1,8 +1,4 @@
-#include <iostream>
-#include <thread>
-#include <chrono>
-#include <unistd.h>
-#include <tuple>
+#include <string>
 #include "doctest.h"
 #include "pseudoterminal.h"
 #include "LinSerial.h"
