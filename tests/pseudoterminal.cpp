@@ -1,11 +1,7 @@
 #include <thread>
-#include <tuple>
-#include <iostream>
-#include <thread>
 #include <chrono>
 #include <fstream>
 #include <signal.h>
-#include <stdio.h>
 #include "helpers.h"
 #include "pseudoterminal.h"
 
