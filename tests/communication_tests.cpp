@@ -11,9 +11,9 @@ TEST_SUITE ("communication_tests")
 {
     TEST_CASE ("read_single_line")
     {
-        auto tunnel = pseudoterminal::setup();
-        LinSer::Serial writer(std::get<1>(tunnel).c_str());
-        LinSer::Serial receiver(std::get<0>(tunnel).c_str());
+        pseudoterminal::setup();
+        LinSer::Serial writer(pseudoterminal::get_connected_ports().endpoint1.c_str());
+        LinSer::Serial receiver(pseudoterminal::get_connected_ports().endpoint2.c_str());
         
         auto receiver_thread = std::thread([&receiver](){
             auto start_ts = std::chrono::steady_clock::now(); 
@@ -29,6 +29,7 @@ TEST_SUITE ("communication_tests")
             CHECK_EQ(receiver.readLine(), "this is a line");
         });
         writer << "this is a line\nthis is another\n";
+        
         receiver_thread.join();
         pseudoterminal::teardown();
     }
