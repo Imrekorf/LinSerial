@@ -5,12 +5,7 @@
 #include "helpers.h"
 #include "pseudoterminal.h"
 
-const std::string OUTPUT_FILE = "socat_output.txt";
-static int socat_pid = -1;
-static pseudoterminal::Ports connected_ports;
-static bool setup_done = false;
-
-void pseudoterminal::setup()
+pseudoterminal::ConnectedPorts::ConnectedPorts()
 {
     std::string socat_str = execute("((socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " +  OUTPUT_FILE +" 2>&1)& echo $!");
     socat_pid = std::stoi(socat_str);
@@ -24,29 +19,27 @@ void pseudoterminal::setup()
         int offset = line.find(DEVICE_DIR);
         if (offset == std::string::npos) continue;
         std::string device = line.substr(offset);
-        if (connected_ports.endpoint1 == INVALID_PORT){
-            connected_ports.endpoint1 = device;
+        if (endpoint1 == INVALID_PORT){
+            endpoint1 = device;
         } else {
-            connected_ports.endpoint2 = device;
+            endpoint2 = device;
             break;
         }
     }
 
     is.close();
-    if (connected_ports.endpoint1 == "invalid" || connected_ports.endpoint2 == INVALID_PORT){
+    if (endpoint1 == INVALID_PORT || endpoint2 == INVALID_PORT){
         throw std::runtime_error("pts: Could not setup tunnel - is socat installed?");
     }
-    setup_done = true;
 }
 
-void pseudoterminal::teardown()
+pseudoterminal::ConnectedPorts::~ConnectedPorts()
 {
     kill(socat_pid, SIGTERM);
     remove(OUTPUT_FILE.c_str());
 }
 
-pseudoterminal::Ports pseudoterminal::get_connected_ports()
+std::tuple<std::string, std::string> pseudoterminal::ConnectedPorts::get()
 {
-    if (!setup_done) setup();
-    return connected_ports; 
+    return {endpoint1, endpoint2}; 
 }
