@@ -5,17 +5,17 @@
 #include <chrono>
 #include <fstream>
 #include <signal.h>
+#include <stdio.h>
 #include "helpers.h"
 #include "pseudoterminal.h"
 
 const std::string OUTPUT_FILE = "socat_output.txt";
 static int socat_pid = -1;
+static pseudoterminal::Ports connected_ports;
+static bool setup_done = false;
 
-std::tuple<std::string, std::string> pseudoterminal::setup()
+void pseudoterminal::setup()
 {
-    const std::string INVALID_PORT = "invalid";
-    std::tuple<std::string, std::string> tunnel = std::tie(INVALID_PORT, INVALID_PORT);
-
     std::string socat_str = execute("((socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " +  OUTPUT_FILE +" 2>&1)& echo $!");
     socat_pid = std::stoi(socat_str);
 
@@ -28,23 +28,29 @@ std::tuple<std::string, std::string> pseudoterminal::setup()
         int offset = line.find(DEVICE_DIR);
         if (offset == std::string::npos) continue;
         std::string device = line.substr(offset);
-        if (std::get<0>(tunnel) == INVALID_PORT){
-            tunnel = std::make_tuple(device, INVALID_PORT);
+        if (connected_ports.endpoint1 == INVALID_PORT){
+            connected_ports.endpoint1 = device;
         } else {
-            tunnel = std::make_tuple(std::get<0>(tunnel), device);
+            connected_ports.endpoint2 = device;
             break;
         }
     }
 
     is.close();
-    if (std::get<0>(tunnel) == "invalid" || std::get<1>(tunnel) == INVALID_PORT){
+    if (connected_ports.endpoint1 == "invalid" || connected_ports.endpoint2 == INVALID_PORT){
         throw std::runtime_error("pts: Could not setup tunnel - is socat installed?");
     }
-
-    return tunnel;
+    setup_done = true;
 }
 
 void pseudoterminal::teardown()
 {
     kill(socat_pid, SIGTERM);
+    remove(OUTPUT_FILE.c_str());
+}
+
+pseudoterminal::Ports pseudoterminal::get_connected_ports()
+{
+    if (!setup_done) setup();
+    return connected_ports; 
 }
