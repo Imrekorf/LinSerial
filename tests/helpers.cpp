@@ -35,6 +35,6 @@ std::vector<std::string> str_split(std::string string, const std::string& delimi
 std::vector<std::string> get_file_names(const std::string& path)
 {
     std::string response = execute("ls " + path);
-    // When failed, sends output to std::err so this is empty. Threat same as no files
+    // When failed, sends output to std::err so this is empty. Treat same as no files
     return str_split(response, "\n");
 }
