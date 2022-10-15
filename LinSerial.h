@@ -63,11 +63,6 @@
 #else
 	#define linSerLogDebug(...)
 #endif
-#if (LINSER_LOG_LEVEL & LINSER_LOG_MUTEX)
-	#define linSerLogMutex(msg, ...)   LinSerLogPre("Mutex"); printf(msg, __VA_ARGS__)
-#else
-	#define linSerLogMutex(msg, ...)   (void)__VA_ARGS__
-#endif
 
 /**@}*/
 
@@ -141,15 +136,11 @@ namespace linSer {
 			unsigned int	_count;
 			char 		 	_buff[SERIAL_BUFFER_SIZE];
 			unsigned int  	_front	: 10;
-			bool			_stopThread;
-			std::mutex	  	_mutex;
-
-			std::thread 	_threadFunc;
 		public:
 			/**
 			 * @brief Construct a new __buffer object.
 			 */
-			__buffer() : _count(0), _front(0), _stopThread(false) {}
+			buffer() : _count(0), _front(0) {}
 			
 			/**
 			 * @brief Pushes a byte to the buffer.
@@ -178,20 +169,6 @@ namespace linSer {
 			 * @return The size of the buffer.
 			 */
 			inline unsigned int getBufferSize() const;
-
-			/**
-			 * @brief Locks this buffer's mutex.
-			 * 
-			 * @param indicator If LINSER_LOG_MUTEX is defined, then an extra message is printed as to which process locks the mutex.
-			 */
-			void lock(const char* const indicator);
-
-			/**
-			 * @brief Unlocks this buffer's mutex.
-			 * 
-			 * @param indicator If LINSER_LOG_MUTEX is defined, then an extra message is printed as to which process unlocks the mutex.
-			 */
-			void unlock(const char* const indicator);
 		};
 	}; // end of namespace buffer.
 
@@ -331,11 +308,14 @@ namespace linSer {
 	private:
 		int hSerial = 0;
 
-		buffer::buffer _incomingBuffer;		// Buffer for storing incoming data.
+		bool		   _stopThread = false;		// bool to stop receiving thread.
+		buffer::buffer _incomingBuffer;			// Buffer for storing incoming data.
+		std::mutex	   _incomingBufferMutex; 	// Mutex used to lock incoming buffer.
+		std::thread    _incomingThread;         // Thread for receiving incoming data.
 		
-		std::mutex	   _serialHandleMutex;	// Gets locked whenever a function that uses hSerial is called.
+		std::mutex	   _serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
 
-		static int readThreadFunc(buffer::buffer& incomingBuffer, int& hSerial, std::mutex& serHandleMutex);
+		static int readThreadFunc(serial& self);
 
 	public:
 		/**

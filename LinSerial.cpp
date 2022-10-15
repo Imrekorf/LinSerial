@@ -29,43 +29,33 @@ std::map<serParam::baudrate, int> serParam::baudrateString  = {
 };
 
 /**=========================== buffer::_buffer functions =========================== **/
-void buffer::__buffer::push(char c){
+void buffer::buffer::push(char c){
 	// Check if buffer is full
-	if (count >= SERIAL_BUFFER_SIZE) { 
+	if (_count >= SERIAL_BUFFER_SIZE) { 
 		linSerLogError("buffer overflow!\n");
 		throw serialBufferOverflowException(c); 
 	}
-	buff[count + front] = c;
-	count++;
+	_buff[_count + _front] = c;
+	_count++;
 }
 
-char buffer::__buffer::pop(void){
-	if (!count) { 
+char buffer::buffer::pop(void){
+	if (!_count) { 
 		linSerLogError("buffer underflow!\n");
 		throw SerialBufferUnderflowException(0);
 	}
-	front++;
-	count--;
-	return buff[front-1];
+	_front++;
+	_count--;
+	return _buff[_front-1];
 }
 
-void buffer::__buffer::flushbuffer(){
-	count = 0;
-	front = 0;
+void buffer::buffer::flushbuffer(){
+	_count = 0;
+	_front = 0;
 }
 
-inline unsigned int buffer::__buffer::getBufferSize() const {
-	return count;
-}
-
-void buffer::__buffer::lock(const char* const indicator){
-	linSerLogMutex("locking: %s\n", indicator);
-	mutex.lock();
-}
-
-void buffer::__buffer::unlock(const char* const indicator){
-	linSerLogMutex("unlocking: %s\n", indicator);
-	mutex.unlock();
+inline unsigned int buffer::buffer::getBufferSize() const {
+	return _count;
 }
 
 
@@ -172,15 +162,15 @@ serial::serial(const char* Port, const serParam& SP, const serTimeout& ST){
   	tcflush(hSerial,TCIOFLUSH);
 
 	// Start threads
-	_incomingBuffer.threadFunc = std::thread(readThreadFunc, std::ref(_incomingBuffer), std::ref(hSerial), std::ref(_serialHandleMutex));
+	_incomingThread = std::thread(readThreadFunc, std::ref(*this));
 }
 
 
 
 serial::~serial(){
 	linSerLogInfo("Closing serial thread...\n");
-	_incomingBuffer.stopThread = true;
-	_incomingBuffer.threadFunc.join();
+	_stopThread = true;
+	_incomingThread.join();
 	
 	_serialHandleMutex.lock();
 	close(hSerial);
@@ -193,20 +183,20 @@ serial::~serial(){
 }
 
 unsigned int serial::available() {
-	_incomingBuffer.lock("Available");
+	_incomingBufferMutex.lock();
 	unsigned int size = _incomingBuffer.getBufferSize();
-	_incomingBuffer.unlock("Available");
+	_incomingBufferMutex.unlock();
 	return size;
 }
 
 void serial::clearBuffer(){
-	_incomingBuffer.lock("clearbuffer");
+	_incomingBufferMutex.lock();
 		_incomingBuffer.flushbuffer();
-	_incomingBuffer.unlock("clearbuffer");
+	_incomingBufferMutex.unlock();
 }
 
 void serial::setTimeout(const serTimeout& ST){
-	_incomingBuffer.lock("SetTimeout");
+	_incomingBufferMutex.lock();
 	_serialHandleMutex.lock();
 
 	// Create new termios struct, we call it 'tty' for convention
@@ -241,32 +231,32 @@ void serial::setTimeout(const serTimeout& ST){
 	}
 
 	_serialHandleMutex.unlock();
-	_incomingBuffer.unlock("SetTimeout");
+	_incomingBufferMutex.unlock();
 }
 
 char serial::readByte(){
-	_incomingBuffer.lock("readbyte");
+	_incomingBufferMutex.lock();
 	char temp = _incomingBuffer.pop();
-	_incomingBuffer.unlock("readbyte");
+	_incomingBufferMutex.unlock();
 	return temp;
 }
 
 unsigned int serial::readBytes(char* buffer, unsigned int length){
 	unsigned int i = 0;
-	_incomingBuffer.lock("readbytes");
+	_incomingBufferMutex.lock();
 	if (length == 0)
 		length = _incomingBuffer.getBufferSize();
 	for (; i < length && _incomingBuffer.getBufferSize(); i++) {
 		char temp = _incomingBuffer.pop();
 		buffer[i] = temp;
 	}
-	_incomingBuffer.unlock("readbytes");
+	_incomingBufferMutex.unlock();
 	return i;
 }
 
 unsigned int serial::readBytesUntil(char* buffer, const char terminator, unsigned int length){
 	unsigned int i = 0;
-	_incomingBuffer.lock("readbytesuntil");
+	_incomingBufferMutex.lock();
 	if (length == 0)
 		length = _incomingBuffer.getBufferSize();
 	for (; i < _incomingBuffer.getBufferSize() && i < length; i++) {
@@ -274,7 +264,7 @@ unsigned int serial::readBytesUntil(char* buffer, const char terminator, unsigne
 		if (buffer[i] == terminator)
 			break;
 	}
-	_incomingBuffer.unlock("readbytesuntil");
+	_incomingBufferMutex.unlock();
 	return i;
 }
 
@@ -284,10 +274,10 @@ std::string serial::readLine(const std::string& newline, size_t timeout_ms){
 		// Newline not yet found, wait max time out untill newline character
 		auto start = std::chrono::system_clock::now();
 		while (true) {
-			while ((std::chrono::system_clock::now() - start).count() < timeout_ms * 1000 && _incomingBuffer.getBufferSize() == 0) {}
+			while (labs((std::chrono::system_clock::now() - start).count()) < timeout_ms * 1000 && _incomingBuffer.getBufferSize() == 0) {}
 			S += readStringUntil(newline);
 			// Exit if new line was found or timeout was reached
-			if(S.find(newline) != std::string::npos || (std::chrono::system_clock::now() - start).count() >= timeout_ms * 1000)
+			if(S.find(newline) != std::string::npos || labs((std::chrono::system_clock::now() - start).count()) >= timeout_ms * 1000)
 				break;
 		}
 		// Check if newline was eventually found or not
@@ -300,34 +290,34 @@ std::string serial::readLine(const std::string& newline, size_t timeout_ms){
 
 std::string serial::readString(){
 	std::string S;
-	_incomingBuffer.lock("readstring");
+	_incomingBufferMutex.lock();
 	while (_incomingBuffer.getBufferSize())
 		S += _incomingBuffer.pop();
-	_incomingBuffer.unlock("readstring");
+	_incomingBufferMutex.unlock();
 	return S;
 }
 
 std::string serial::readStringUntil(const char terminator){
 	std::string S;
-	_incomingBuffer.lock("readstringuntil");
+	_incomingBufferMutex.lock();
 	while (_incomingBuffer.getBufferSize()) {
 		S += _incomingBuffer.pop();
 		if (S.back() == terminator)
 			break;
 	}
-	_incomingBuffer.unlock("readstringuntil");
+	_incomingBufferMutex.unlock();
 	return S;
 }
 
 std::string serial::readStringUntil(const std::string& substr){
 	std::string S;
-	_incomingBuffer.lock("readstringuntil");
+	_incomingBufferMutex.lock();
 	while (_incomingBuffer.getBufferSize()) {
 		S += _incomingBuffer.pop();
 		if (S.find(substr) != std::string::npos)
 			break;
 	}
-	_incomingBuffer.unlock("readstringuntil");
+	_incomingBufferMutex.unlock();
 	return S;
 }
 
@@ -348,8 +338,8 @@ void serial::writeBytes(const char* buf, const unsigned int len){
 		linSerLogError("during write: %s\n", std::strerror(errno));
 }
 
-int serial::readThreadFunc(buffer::buffer& IncomingBuffer, int& hSerial, std::mutex& serHandleMutex){
-	while (!IncomingBuffer.stopThread) {
+int serial::readThreadFunc(serial& self){
+	while (!self._stopThread) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(SERIAL_READ_SLEEP_TIME));
 		char szBuff[SERIAL_BUFFER_SIZE + 1] = {0};
 		// Read bytes. The behaviour of read() (e.g. does it block?,
@@ -362,11 +352,11 @@ int serial::readThreadFunc(buffer::buffer& IncomingBuffer, int& hSerial, std::mu
 		memset(&szBuff, '\0', sizeof(szBuff));
 
 		// Lock and read data
-		serHandleMutex.lock();
-		ioctl(hSerial, FIONREAD, &n);
+		self._serialHandleMutex.lock();
+		ioctl(self.hSerial, FIONREAD, &n);
 		if (n != 0)
-			n = read(hSerial, &szBuff, sizeof(szBuff));
-		serHandleMutex.unlock();
+			n = read(self.hSerial, &szBuff, sizeof(szBuff));
+		self._serialHandleMutex.unlock();
 		// Read nothing
 		if (!n)
 			continue; // Read returned 0 or ioctl returned 0 thus continue the loop
@@ -376,15 +366,15 @@ int serial::readThreadFunc(buffer::buffer& IncomingBuffer, int& hSerial, std::mu
 		// Read something
 		if (n > 0) {
 			try {
-				IncomingBuffer.lock("readthread");
-				for(int i = 0; i < n && !IncomingBuffer.stopThread; i++)
-					IncomingBuffer.push(szBuff[i]);
-				IncomingBuffer.unlock("readthread");
+				self._incomingBufferMutex.lock();
+				for(int i = 0; i < n && !self._stopThread; i++)
+					self._incomingBuffer.push(szBuff[i]);
+				self._incomingBufferMutex.unlock();
 			}
 			catch (buffer::serialBufferException const &e) {
 				linSerLogError("Stopping reading thread due to exception %s\n", e.what());
-				IncomingBuffer.unlock("readthread-crash");
-				while(!IncomingBuffer.stopThread){}
+				self._incomingBufferMutex.unlock();
+				while(!self._stopThread){}
 				return -1;
 			}
 		}

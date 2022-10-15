@@ -3,12 +3,12 @@
 #include <unistd.h>
 
 int main() {
-    linSerLogInfo("Debug: %s", (LINSERLOGLEVEL & LINSERLOG_DEBUG ? "on" : "off"));
+    linSerLogInfo("Debug: %s", (LINSER_LOG_LEVEL & LINSER_LOG_DEBUG ? "on" : "off"));
     
     linSer::serial port("/dev/tty10");
     // expands to: 
 	// LinSer::serial port("/dev/ttyACM0", LinSer::serParam(
-    //     LinSer::serParam::baudrate::Baud9600,
+    //     LinSer::serParam::baudrate::b9600,
     //     LinSer::serParam::parity::PAR_NONE,
     //     LinSer::serParam::stopBits::ONE_STOP,
     //     LinSer::serParam::bitCount::BIT_COUNT_8
