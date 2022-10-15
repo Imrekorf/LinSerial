@@ -95,7 +95,7 @@ namespace linSer {
 			/**
 			 * @brief C-style string of the exception message.
 			 * 
-			 * @return const char* 
+			 * @return The C-style exception message.
 			 */
 			const char* what() const noexcept override {
 				return _message.c_str();
@@ -103,7 +103,7 @@ namespace linSer {
 			/**
 			 * @brief Get the error type of the exception.
 			 * 
-			 * @return buffExcType 
+			 * @return The error type 
 			 */
 			buffExcType getType(){
 				return _error;
@@ -111,7 +111,7 @@ namespace linSer {
 			/**
 			 * @brief The byte that caused the exception.
 			 * 
-			 * @return unsigned char 
+			 * @return The byte that caused the exception.
 			 */
 			unsigned char thrownAtByte(){
 				return _byte;
@@ -136,19 +136,20 @@ namespace linSer {
 		};
 
 		/**=========================== Buffer logic =========================== **/
-		typedef struct __buffer {
-			unsigned int	count;
-			char 		 	buff[SERIAL_BUFFER_SIZE];
-			unsigned int  	front	: 10;
-			bool			stopThread;
-			std::mutex	  	mutex;
+		class buffer {
+		private:
+			unsigned int	_count;
+			char 		 	_buff[SERIAL_BUFFER_SIZE];
+			unsigned int  	_front	: 10;
+			bool			_stopThread;
+			std::mutex	  	_mutex;
 
-			std::thread 	threadFunc;
-
+			std::thread 	_threadFunc;
+		public:
 			/**
 			 * @brief Construct a new __buffer object.
 			 */
-			__buffer() : count(0), front(0), stopThread(false) {}
+			__buffer() : _count(0), _front(0), _stopThread(false) {}
 			
 			/**
 			 * @brief Pushes a byte to the buffer.
@@ -191,7 +192,7 @@ namespace linSer {
 			 * @param indicator If LINSER_LOG_MUTEX is defined, then an extra message is printed as to which process unlocks the mutex.
 			 */
 			void unlock(const char* const indicator);
-		} buffer;
+		};
 	}; // end of namespace buffer.
 
 
@@ -505,6 +506,13 @@ namespace linSer {
 		 */
 		void writeBytes(const char* buf, const unsigned int len);
 
+		/**
+		 * @brief Prints data to the serial port as human-readable ASCII text followed by specified newline sequence.
+		 * 
+		 * @tparam T The data type of the desired value, should be convertable to string.
+		 * @param val The value to be printed.
+		 * @return serial& reference to the serial object.
+		 */
 		template<typename T>
 		serial& operator<<(const T& val){
 			print(val);

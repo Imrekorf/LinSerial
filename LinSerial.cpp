@@ -349,7 +349,7 @@ void serial::writeBytes(const char* buf, const unsigned int len){
 }
 
 int serial::readThreadFunc(buffer::buffer& IncomingBuffer, int& hSerial, std::mutex& serHandleMutex){
-	while(!IncomingBuffer.stopThread) {
+	while (!IncomingBuffer.stopThread) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(SERIAL_READ_SLEEP_TIME));
 		char szBuff[SERIAL_BUFFER_SIZE + 1] = {0};
 		// Read bytes. The behaviour of read() (e.g. does it block?,
