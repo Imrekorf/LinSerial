@@ -3,16 +3,16 @@
 #include <unistd.h>
 
 int main() {
-    LinSerLogInfo("Debug: %s", (LINSERLOGLEVEL & LINSERLOG_DEBUG ? "on" : "off"));
+    linSerLogInfo("Debug: %s", (LINSERLOGLEVEL & LINSERLOG_DEBUG ? "on" : "off"));
     
-    LinSer::Serial port("/dev/tty10");
+    linSer::serial port("/dev/tty10");
     // expands to: 
-	// LinSer::Serial port("/dev/ttyACM0", LinSer::SerParam(
-    //     LinSer::SerParam::Baudrate::Baud9600,
-    //     LinSer::SerParam::Parity::PAR_NONE,
-    //     LinSer::SerParam::StopBits::ONE_STOP,
-    //     LinSer::SerParam::BitCount::ByteSize8
-    // ), LinSer::SerTimeOut(0, 100));
+	// LinSer::serial port("/dev/ttyACM0", LinSer::serParam(
+    //     LinSer::serParam::baudrate::Baud9600,
+    //     LinSer::serParam::parity::PAR_NONE,
+    //     LinSer::serParam::stopBits::ONE_STOP,
+    //     LinSer::serParam::bitCount::BIT_COUNT_8
+    // ), LinSer::serTimeout(0, 100));
 
     for (int i = 0; i < 2; i++){
         std::cout << "writing hello to port" << std::endl;
