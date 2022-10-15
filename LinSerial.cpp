@@ -86,7 +86,7 @@ serial::serial(const char* Port, const serParam& SP, const serTimeout& ST){
 		throw serialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr(): " + std::strerror(errno),
-			serialException::tcgetarrtError);
+			serialException::tcgetattrError);
 	}
 
 	// Control modes
@@ -210,7 +210,7 @@ void serial::setTimeout(const serTimeout& ST){
 		throw serialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr: " + std::strerror(errno),
-			serialException::tcgetarrtError);
+			serialException::tcgetattrError);
 	}
 
 	// Set timeout

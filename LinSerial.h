@@ -184,7 +184,7 @@ namespace linSer {
 	public:
 		enum serExcType {
 			openError,
-			tcgetarrtError,
+			tcgetattrError,
 			tcsetattrError,
 			noEOLTimeout,
 		};
