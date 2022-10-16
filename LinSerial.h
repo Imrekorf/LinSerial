@@ -80,20 +80,20 @@ namespace linSer {
 				underflow
 			};
 		private:
-			std::string _message;
-			buffExcType _error;
-			unsigned char _byte;
+			std::string message;
+			buffExcType error;
+			unsigned char byte;
 		public:
 			
 			explicit serialBufferException(const std::string& message, const buffExcType err, unsigned char byte) : 
-				_message(message), _error(err), _byte(byte) {}
+				message(message), error(err), byte(byte) {}
 			/**
 			 * @brief C-style string of the exception message.
 			 * 
 			 * @return The C-style exception message.
 			 */
 			const char* what() const noexcept override {
-				return _message.c_str();
+				return message.c_str();
 			}
 			/**
 			 * @brief Get the error type of the exception.
@@ -101,7 +101,7 @@ namespace linSer {
 			 * @return The error type 
 			 */
 			buffExcType getType(){
-				return _error;
+				return error;
 			}
 			/**
 			 * @brief The byte that caused the exception.
@@ -109,7 +109,7 @@ namespace linSer {
 			 * @return The byte that caused the exception.
 			 */
 			unsigned char thrownAtByte(){
-				return _byte;
+				return byte;
 			}
 		};
 
@@ -133,14 +133,14 @@ namespace linSer {
 		/**=========================== Buffer logic =========================== **/
 		class buffer {
 		private:
-			unsigned int	_count;
-			char 		 	_buff[SERIAL_BUFFER_SIZE];
-			unsigned int  	_front	: 10;
+			unsigned int	count;
+			char 		 	buff[SERIAL_BUFFER_SIZE];
+			unsigned int  	front	: 10;
 		public:
 			/**
 			 * @brief Construct a new __buffer object.
 			 */
-			buffer() : _count(0), _front(0) {}
+			buffer() : count(0), front(0) {}
 			
 			/**
 			 * @brief Pushes a byte to the buffer.
@@ -189,12 +189,12 @@ namespace linSer {
 			noEOLTimeout,
 		};
 	private:
-		std::string _message;
-		serExcType _error;
+		std::string message;
+		serExcType error;
 	public:
-		explicit serialException(const std::string& message, serExcType error) : _message(message), _error(error) {}
+		explicit serialException(const std::string& message, serExcType error) : message(message), error(error) {}
 		const char* what() const noexcept override {
-			return _message.c_str();
+			return message.c_str();
 		}
 	};
 
@@ -266,12 +266,12 @@ namespace linSer {
 			PAR_ODD  = 2,	// Set PARENB & set PARODD.
 		};
 
-		baudrate _rate 			= baudrate::b9600;
-		parity 	 _parity 		= parity::PAR_NONE;
-		stopBits _stopBits		= stopBits::ONE_STOP;
-		bitCount _bitCount 		= bitCount::BIT_COUNT_8;
+		baudrate rate 			= baudrate::b9600;
+		parity 	 parity_ 		= parity::PAR_NONE;
+		stopBits stopBits_		= stopBits::ONE_STOP;
+		bitCount bitCount_ 		= bitCount::BIT_COUNT_8;
 		serParam(baudrate rate = baudrate::b9600, parity par = parity::PAR_NONE, stopBits stop = stopBits::ONE_STOP, bitCount bits = bitCount::BIT_COUNT_8) :
-			_rate(rate), _parity(par), _stopBits(stop), _bitCount(bits) {}
+			rate(rate), parity_(par), stopBits_(stop), bitCount_(bits) {}
 	};
 
 	/**
@@ -308,14 +308,14 @@ namespace linSer {
 	private:
 		int hSerial = 0;
 
-		bool		   _stopThread = false;		// bool to stop receiving thread.
-		buffer::buffer _incomingBuffer;			// Buffer for storing incoming data.
-		std::mutex	   _incomingBufferMutex; 	// Mutex used to lock incoming buffer.
-		std::thread    _incomingThread;         // Thread for receiving incoming data.
+		bool		   stopThread = false;		// bool to stop receiving thread.
+		buffer::buffer incomingBuffer;			// Buffer for storing incoming data.
+		std::mutex	   incomingBufferMutex; 	// Mutex used to lock incoming buffer.
+		std::thread    incomingThread;         // Thread for receiving incoming data.
 		
-		std::mutex	   _serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
+		std::mutex	   serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
 
-		static int readThreadFunc(serial& self);
+		static int _readThreadFunc(serial& self);
 
 	public:
 		/**
