@@ -29,7 +29,7 @@ std::map<serParam::baudrate, int> serParam::baudrateString  = {
 };
 
 /**=========================== buffer::_buffer functions =========================== **/
-void buffer::buffer::push(char c){
+void buffer::buffer::push(char c) {
 	// Check if buffer is full
 	if (count >= SERIAL_BUFFER_SIZE) { 
 		linSerLogError("buffer overflow!\n");
@@ -39,7 +39,7 @@ void buffer::buffer::push(char c){
 	count++;
 }
 
-char buffer::buffer::pop(void){
+char buffer::buffer::pop(void) {
 	if (!count) { 
 		linSerLogError("buffer underflow!\n");
 		throw SerialBufferUnderflowException(0);
@@ -49,7 +49,7 @@ char buffer::buffer::pop(void){
 	return buff[front-1];
 }
 
-void buffer::buffer::flushbuffer(){
+void buffer::buffer::flushbuffer() {
 	count = 0;
 	front = 0;
 }
@@ -59,7 +59,9 @@ inline unsigned int buffer::buffer::getBufferSize() const {
 }
 
 
-serial::serial(const char* Port, const serParam& SP, const serTimeout& ST){
+serialBase::serialBase(const char* Port, const serParam& SP, const serTimeout& ST, const std::string eolString) {
+	this->eolString = eolString;
+
 	// Setup handle
 	hSerial = open(Port, O_RDWR);
 
@@ -86,7 +88,7 @@ serial::serial(const char* Port, const serParam& SP, const serTimeout& ST){
 		throw serialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr(): " + std::strerror(errno),
-			serialException::tcgetarrtError);
+			serialException::tcgetattrError);
 	}
 
 	// Control modes
@@ -161,43 +163,19 @@ serial::serial(const char* Port, const serParam& SP, const serTimeout& ST){
 	usleep(10000); // Required to make flush work, for some reason
   	tcflush(hSerial,TCIOFLUSH);
 
-	// Start threads
-	incomingThread = std::thread(_readThreadFunc, std::ref(*this));
-}
-
-
-
-serial::~serial(){
-	linSerLogInfo("Closing serial thread...\n");
-	stopThread = true;
-	incomingThread.join();
 	
-	serialHandleMutex.lock();
-	close(hSerial);
-	serialHandleMutex.unlock();
-	hSerial = 0;
-
-	#if LINSER_LOGLEVEL >= 3
-	linSerLogInfo("closed!\n");
-	#endif
 }
 
-unsigned int serial::available() {
-	incomingBufferMutex.lock();
-	unsigned int size = incomingBuffer.getBufferSize();
-	incomingBufferMutex.unlock();
-	return size;
+
+
+serialBase::~serialBase() {
+	
 }
 
-void serial::clearBuffer(){
-	incomingBufferMutex.lock();
-		incomingBuffer.flushbuffer();
-	incomingBufferMutex.unlock();
-}
 
-void serial::setTimeout(const serTimeout& ST){
-	incomingBufferMutex.lock();
-	serialHandleMutex.lock();
+
+void serialBase::setTimeout(const serTimeout& ST) {
+	std::lock_guard<std::mutex> lock(serialHandleMutex);
 
 	// Create new termios struct, we call it 'tty' for convention
 	// No need for "= {0}" at the end as we'll immediately write the existing
@@ -210,7 +188,7 @@ void serial::setTimeout(const serTimeout& ST){
 		throw serialException(
 			"Error " + std::to_string(errno) +
 			"from tcgetattr: " + std::strerror(errno),
-			serialException::tcgetarrtError);
+			serialException::tcgetattrError);
 	}
 
 	// Set timeout
@@ -229,116 +207,87 @@ void serial::setTimeout(const serTimeout& ST){
 			"from tcsetattr: " + std::strerror(errno),
 			serialException::tcsetattrError);
 	}
-
-	serialHandleMutex.unlock();
-	incomingBufferMutex.unlock();
 }
 
-char serial::readByte(){
-	incomingBufferMutex.lock();
-	char temp = incomingBuffer.pop();
-	incomingBufferMutex.unlock();
+char serialBase::readByte() {
+	char temp;
+	serRead(&temp, 1);
 	return temp;
 }
 
-unsigned int serial::readBytes(char* buffer, unsigned int length){
-	unsigned int i = 0;
-	incomingBufferMutex.lock();
-	if (length == 0)
-		length = incomingBuffer.getBufferSize();
-	for (; i < length && incomingBuffer.getBufferSize(); i++) {
-		char temp = incomingBuffer.pop();
-		buffer[i] = temp;
-	}
-	incomingBufferMutex.unlock();
-	return i;
+unsigned int serialBase::readBytes(char* buffer, unsigned int length) {
+	return serRead(buffer, length);
 }
 
-unsigned int serial::readBytesUntil(char* buffer, const char terminator, unsigned int length){
-	unsigned int i = 0;
-	incomingBufferMutex.lock();
-	if (length == 0)
-		length = incomingBuffer.getBufferSize();
-	for (; i < incomingBuffer.getBufferSize() && i < length; i++) {
-		buffer[i] = incomingBuffer.pop();
-		if (buffer[i] == terminator)
-			break;
-	}
-	incomingBufferMutex.unlock();
-	return i;
+unsigned int serialBase::readBytesUntil(char* buffer, const char terminator, unsigned int length) {
+	return serReadUntil(buffer, terminator, length);
 }
 
-std::string serial::readLine(const std::string& newline, size_t timeout_ms){
-	std::string S = readStringUntil(newline);
-	if (S.find(newline) == std::string::npos){
-		// Newline not yet found, wait max time out untill newline character
-		auto start = std::chrono::system_clock::now();
-		while (true) {
-			while (labs((std::chrono::system_clock::now() - start).count()) < timeout_ms * 1000 && incomingBuffer.getBufferSize() == 0) {}
-			S += readStringUntil(newline);
-			// Exit if new line was found or timeout was reached
-			if(S.find(newline) != std::string::npos || labs((std::chrono::system_clock::now() - start).count()) >= timeout_ms * 1000)
-				break;
+size_t serialBase::readBytesUntil(char* buffer, size_t bufferLength, const char* substr, size_t substrLength) {
+	const size_t avail = available();
+	size_t read = 0, c = 0;
+	read += serReadUntil(buffer, substr[0], avail);
+	while(c < substrLength && read < bufferLength) {
+		if (buffer[read-1] == substr[c++]) { // continue
+			size_t r = serRead(buffer + read, 1); // read 1 more
+			if (r <= 0)
+				break; // no more bytes available;
+			read += r;
+		} else {
+			c = 0;
 		}
-		// Check if newline was eventually found or not
-		if (S.find(newline) == std::string::npos)
-			throw noEOLTimeoutException(timeout_ms);
 	}
-	S.erase(S.end() - newline.length(), S.end());
-	return S;
+
+	return read;
 }
 
-std::string serial::readString(){
-	std::string S;
-	incomingBufferMutex.lock();
-	while (incomingBuffer.getBufferSize())
-		S += incomingBuffer.pop();
-	incomingBufferMutex.unlock();
-	return S;
+std::string serialBase::readString() {
+	const size_t avail = available();
+	std::unique_ptr<char> buffer = std::make_unique<char>(avail);
+	const size_t read = serRead(buffer.get(), avail);
+	return std::string(buffer.get(), read); // check if this does not create problems with memory deallocation.
 }
 
-std::string serial::readStringUntil(const char terminator){
-	std::string S;
-	incomingBufferMutex.lock();
-	while (incomingBuffer.getBufferSize()) {
-		S += incomingBuffer.pop();
-		if (S.back() == terminator)
-			break;
-	}
-	incomingBufferMutex.unlock();
-	return S;
+std::string serialBase::readStringUntil(const char terminator) {
+	const size_t avail = available();
+	std::unique_ptr<char> buffer = std::make_unique<char>(avail);
+	const size_t read = serReadUntil(buffer.get(), terminator, avail);
+	return std::string(buffer.get(), read); // check if this does not create problems with memory deallocation.
 }
 
-std::string serial::readStringUntil(const std::string& substr){
-	std::string S;
-	incomingBufferMutex.lock();
-	while (incomingBuffer.getBufferSize()) {
-		S += incomingBuffer.pop();
-		if (S.find(substr) != std::string::npos)
-			break;
-	}
-	incomingBufferMutex.unlock();
-	return S;
+std::string serialBase::readStringUntil(std::string& substr) {
+	const size_t avail = available();
+	std::unique_ptr<char> buffer = std::make_unique<char>(avail);
+	const size_t read = readBytesUntil(buffer.get(), avail, substr.c_str(), substr.length());
+	return std::string(buffer.get(), read); // check if this does not create problems with memory deallocation.
 }
 
-void serial::writeByte(const char val){
+std::string serialBase::readLine() {
+	return readStringUntil(eolString);
+}
+
+void serialBase::writeByte(const char val) {
 	char buf[1] = {val};
 	writeBytes(buf, 1);
 }
 
-void serial::writeStr(const std::string str){
+void serialBase::writeStr(const std::string str) {
 	writeBytes(str.c_str(), str.length());
 }
 
-void serial::writeBytes(const char* buf, const unsigned int len){
-	serialHandleMutex.lock();
+void serialBase::writeBytes(const char* buf, const unsigned int len) {
+	std::unique_lock<std::mutex> lock(serialHandleMutex);
 	int n = write(hSerial, buf, len);
-	serialHandleMutex.unlock();
+	lock.unlock();
+	if (n < 0) {
+		linSerLogError("during write: %s\n", std::strerror(errno));
+		throw serialException("during write: " + std::string(std::strerror(errno)), serialException::writeError);
+	}
 	if (n < 0) // Error occurred. Inform user
 		linSerLogError("during write: %s\n", std::strerror(errno));
 }
 
-int serial::_readThreadFunc(serial& self){
+int serialAsync::_readThreadFunc(serialAsync& self) {
 	while (!self.stopThread) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(SERIAL_READ_SLEEP_TIME));
 		char szBuff[SERIAL_BUFFER_SIZE + 1] = {0};
@@ -352,11 +301,11 @@ int serial::_readThreadFunc(serial& self){
 		memset(&szBuff, '\0', sizeof(szBuff));
 
 		// Lock and read data
-		self.serialHandleMutex.lock();
+		std::unique_lock<std::mutex> lock(self.serialHandleMutex);
 		ioctl(self.hSerial, FIONREAD, &n);
 		if (n != 0)
 			n = read(self.hSerial, &szBuff, sizeof(szBuff));
-		self.serialHandleMutex.unlock();
+		lock.unlock();
 		// Read nothing
 		if (!n)
 			continue; // Read returned 0 or ioctl returned 0 thus continue the loop
@@ -366,14 +315,12 @@ int serial::_readThreadFunc(serial& self){
 		// Read something
 		if (n > 0) {
 			try {
-				self.incomingBufferMutex.lock();
+				std::lock_guard<std::mutex> lock(self.incomingBufferMutex);
 				for(int i = 0; i < n && !self.stopThread; i++)
 					self.incomingBuffer.push(szBuff[i]);
-				self.incomingBufferMutex.unlock();
 			}
 			catch (buffer::serialBufferException const &e) {
 				linSerLogError("Stopping reading thread due to exception %s\n", e.what());
-				self.incomingBufferMutex.unlock();
 				while(!self.stopThread){}
 				return -1;
 			}
@@ -382,4 +329,108 @@ int serial::_readThreadFunc(serial& self){
 	linSerLogDebug("Stopping reading thread\n");
 
 	return 0;
+}
+
+serialSync::serialSync(const char* port, const serParam& serPar, const serTimeout& serTim, const std::string eolString) : serialBase(port, serPar, serTim, eolString) {
+
+}
+
+serialSync::~serialSync() {
+
+}
+
+size_t serialSync::serRead(char* buffer, size_t size) {
+	int n = 0; // acts as a buffer to hold byte counts
+	std::unique_lock<std::mutex> lock(serialHandleMutex);
+	if (ioctl(hSerial, FIONREAD, &n) == -1) {
+		linSerLogError("during ioctl: %s\n", std::strerror(errno));
+		serialException("Error during read: " + std::string(std::strerror(errno)), serialException::ioctlError);
+	}
+	if (n != 0)
+		n = read(hSerial, &buffer, sizeof(size));
+	lock.unlock();
+	if (n < 0) {
+		linSerLogError("during read: %s\n", std::strerror(errno));
+		memset(&buffer, '\0', sizeof(buffer));
+		serialException("Error during read: " + std::string(std::strerror(errno)), serialException::readError);
+	}
+	return n;
+}
+
+size_t serialSync::available() {
+	int n = 0; // acts as a buffer to hold byte counts
+	std::unique_lock<std::mutex> lock(serialHandleMutex);
+	if (ioctl(hSerial, FIONREAD, &n) == -1) {
+		linSerLogError("during ioctl: %s\n", std::strerror(errno));
+		serialException("Error during read: " + std::string(std::strerror(errno)), serialException::ioctlError);
+	}
+	return n;
+}
+
+size_t serialSync::serReadUntil(char* buffer, char terminator, size_t length) {
+	size_t i = 0;
+	size_t buffer_size = available();
+	if (length == 0)
+		length = buffer_size;
+	for (; i < buffer_size && i < length; i++) {
+		serRead(buffer+i, 1);
+		if (buffer[i] == terminator)
+			break;
+	}
+	return i;
+}
+
+serialAsync::serialAsync(const char* port, const serParam& serPar, const serTimeout& serTim, const std::string eolString) : serialBase(port, serPar, serTim, eolString) {
+	// Start threads
+	incomingThread = std::thread(_readThreadFunc, std::ref(*this));
+}
+
+serialAsync::~serialAsync() {
+	linSerLogInfo("Closing serial thread...\n");
+	stopThread = true;
+	incomingThread.join();
+	std::unique_lock<std::mutex> lock(serialHandleMutex);
+	
+	close(hSerial);
+	lock.unlock();
+	hSerial = 0;
+
+	#if LINSER_LOGLEVEL >= 3
+	linSerLogInfo("closed!\n");
+	#endif
+}
+
+size_t serialAsync::serRead(char* buffer, size_t length) {
+	size_t i = 0;
+	const std::lock_guard<std::mutex> lock(incomingBufferMutex);
+	size_t buffer_size = incomingBuffer.getBufferSize();
+	if (length == 0)
+		length = buffer_size;
+	for (; i < buffer_size && i < length; i++) // todo: make this into 1 function call
+		buffer[i] = incomingBuffer.pop();
+	return i;
+}
+
+size_t serialAsync::serReadUntil(char* buffer, char terminator, size_t length) {
+	unsigned int i = 0;
+	const std::lock_guard<std::mutex> lock(incomingBufferMutex);
+	if (length == 0)
+		length = incomingBuffer.getBufferSize();
+	for (; i < incomingBuffer.getBufferSize() && i < length; i++) {
+		buffer[i] = incomingBuffer.pop();
+		if (buffer[i] == terminator)
+			break;
+	}
+	return i;
+}
+
+size_t serialAsync::available() {
+	const std::lock_guard<std::mutex> lock(incomingBufferMutex);
+	unsigned int size = incomingBuffer.getBufferSize();
+	return size;
+}
+
+void serialAsync::clearBuffer(){
+	const std::lock_guard<std::mutex> lock(incomingBufferMutex);
+	incomingBuffer.flushbuffer();
 }

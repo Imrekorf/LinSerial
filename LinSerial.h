@@ -184,7 +184,10 @@ namespace linSer {
 	public:
 		enum serExcType {
 			openError,
-			tcgetarrtError,
+			readError,
+			ioctlError,
+			writeError,
+			tcgetattrError,
 			tcsetattrError,
 			noEOLTimeout,
 		};
@@ -300,22 +303,21 @@ namespace linSer {
 
 	/**=========================== Serial Class  =========================== **/
 
+	class iSerial {
+		protected:
+			virtual size_t serRead(char* buffer, size_t length) = 0;
+			virtual size_t serReadUntil(char* buffer, char terminator, size_t length) = 0;
+			virtual size_t available() = 0;
+	};
+
 	/**
 	 * @brief Serial interface implementation using arduino style functions.
-	 * 
 	 */
-	class serial {
-	private:
+	class serialBase : public iSerial {
+	protected:
 		int hSerial = 0;
-
-		bool		   stopThread = false;		// bool to stop receiving thread.
-		buffer::buffer incomingBuffer;			// Buffer for storing incoming data.
-		std::mutex	   incomingBufferMutex; 	// Mutex used to lock incoming buffer.
-		std::thread    incomingThread;         // Thread for receiving incoming data.
-		
-		std::mutex	   serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
-
-		static int _readThreadFunc(serial& self);
+		std::mutex	   	serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
+		std::string	   	eolString;
 
 	public:
 		/**
@@ -327,24 +329,12 @@ namespace linSer {
 		 * 
 		 * @throws serialException if open() or tcgetattr() fails. Use what() to get error message.
 		 */
-		serial(const char* port, const serParam& serPar = serParam(), const serTimeout& SerTim = serTimeout());
+		serialBase(const char* port, const serParam& serPar, const serTimeout& serTim, const std::string eolString);
 		
 		/**
 		 * @brief Destroy the serial object, also closes the read thread.
 		 */
-		~serial();
-		
-		/**
-		 * @brief Returns the number of bytes available to read.
-		 * 
-		 * @return The number of bytes available to read.
-		 */
-		unsigned int available();
-
-		/**
-		 * @brief Clears currently stored buffer data.
-		 */
-		void clearBuffer();
+		virtual ~serialBase();
 
 		/**
 		 * @brief Sets the timeout parameters of the serial port.
@@ -355,7 +345,7 @@ namespace linSer {
 		void setTimeout(const serTimeout& serTim);
 
 		/**
-		 * @brief Returns first byte of incoming serial data available.
+		 * @brief Returns 1 byte of incomming serial data.
 		 * 
 		 * @return The read character from serial data.
 		 * 
@@ -364,7 +354,7 @@ namespace linSer {
 		char readByte();
 		
 		/**
-		 * @brief Reads incoming buffer into char array.
+		 * @brief Reads serial data into char array.
 		 * Terminates when buffer empty or if it reaches size of length.
 		 * 
 		 * @param[out] buffer The buffer to read characters into, should be allocated to atleast the size of length parameter.
@@ -375,7 +365,7 @@ namespace linSer {
 		unsigned int readBytes(char* buffer, unsigned int length = 0);
 
 		/**
-		 * @brief Reads the incoming buffer into a char array until the terminator character is read.
+		 * @brief Reads the serial data into a char array until the terminator character is read.
 		 * Terminates when buffer empty or if it reaches size of length.
 		 * 
 		 * @param[out] buffer The buffer to read characters into.
@@ -387,27 +377,36 @@ namespace linSer {
 		unsigned int readBytesUntil(char* buffer, const char terminator, unsigned int length = 0);
 		
 		/**
-		 * @brief Reads a line until lineEnd from buffer. If lineEnd is not in buffer, hangs until it is received or until timeout_ms has passed.
+		 * @brief Reads the serial data into a char array until the terminator character is read.
+		 * Terminates when buffer empty or if it reaches size of length.
 		 * 
-		 * @param[in] lineEnd The string that represents the end of the line.
-		 * @param[in] timeout_ms The maximum amount of time in milliseconds to wait if lineEnd character was not in present buffer.
-		 * @return The read line.
+		 * @param buffer The buffer to read characters into.
+		 * @param bufferLength Length of the buffer
+		 * @param substr The substring to read until
+		 * @param substrLength Length of the substring
+		 * @return The amount of read bytes; 
+		 */
+		size_t readBytesUntil(char* buffer, size_t bufferLength, const char* substr, size_t substrLength);
+		
+		/**
+		 * @brief Reads a line until lineEnd from serial data.
+		 * 
+		 * @return The read line. Or available bytes.
 		 * 
 		 * @throws noEOLTimeoutException when lineEnd is not received after timeout_ms.
 		 */
-		std::string readLine(const std::string& lineEnd = "\n", size_t timeout_ms = 500);
+		std::string readLine();
 
 		/**
-		 * @brief Reads the incoming buffer into a string.
+		 * @brief Reads serial data into a string.
 		 * 
 		 * @return The read bytes as a string.
 		 */
 		std::string readString();
 		
 		/**
-		 * @brief Reads the incoming buffer into a string until the terminator character is read.
-		 * Terminator character is omitted from the end of the buffer and discarded from the buffer.
-		 * Terminates when buffer empty or if it reaches terminator character.
+		 * @brief Reads serial data into a string until the terminator character is read.
+		 * Terminates when no more serial data or if it reaches terminator character.
 		 * 
 		 * @param[in] terminator the terminator character.
 		 * 
@@ -416,13 +415,13 @@ namespace linSer {
 		std::string readStringUntil(const char terminator);
 
 		/**
-		 * @brief Reads the incoming buffer into a string until the substring is read.
-		 * Terminates when buffer empty or if a match with substr is made.
+		 * @brief Reads the serial data into a string until the substring is read.
+		 * Terminates when no more serial data or if a match with substr is made.
 		 * 
 		 * @param[in] substr the substring to read until.
-		 * @return The read bytes as a string.
+		 * @return The read bytes as a string. If the substring was not found returns read bytes.
 		 */
-		std::string readStringUntil(const std::string& substr);
+		std::string readStringUntil(std::string& substr);
 
 		template<typename T>
 		class isStreamable {
@@ -459,9 +458,9 @@ namespace linSer {
 		 */
 		template<typename type>
 		typename std::enable_if<isStreamable<type>::value, void>::type 
-		  println(type val, std::string ln = "\r\n"){
+		  println(type val){
 			print<type>(val);
-			writeStr(ln);
+			writeStr(eolString);
 		}
 
 		/**
@@ -494,10 +493,56 @@ namespace linSer {
 		 * @return serial& reference to the serial object.
 		 */
 		template<typename T>
-		serial& operator<<(const T& val){
+		serialBase& operator<<(const T& val){
 			print(val);
 			return *this;
 		}
 
+	};
+
+	class serialSync : public serialBase {
+	private:
+		size_t serRead(char* buffer, size_t length) override;
+		size_t serReadUntil(char* buffer, char terminator, size_t length) override;
+	public:
+		serialSync(const char* port, const serParam& serPar = serParam(), const serTimeout& serTim = serTimeout(), const std::string eolString = "\r\n");
+		~serialSync();
+
+		/**
+		 * @brief Returns the number of bytes available to read.
+		 * 
+		 * @return The number of bytes available to read.
+		 */
+		size_t available() override;
+	};
+
+	class serialAsync : public serialBase {
+	private:
+		bool		   	stopThread = false;		// bool to stop receiving thread.
+		buffer::buffer 	incomingBuffer;			// Buffer for storing incoming data.
+		std::mutex	   	incomingBufferMutex; 	// Mutex used to lock incoming buffer.
+		std::thread    	incomingThread;         // Thread for receiving incoming data.
+
+		static int 		_readThreadFunc(serialAsync& self);
+
+		size_t serRead(char* buffer, size_t length) override;
+		size_t serReadUntil(char* buffer, char terminator, size_t length) override;
+
+	public:
+		serialAsync(const char* port, const serParam& serPar = serParam(), const serTimeout& serTim = serTimeout(), const std::string eolString = "\r\n");
+		~serialAsync();
+
+		/**
+		 * @brief Returns the number of bytes available to read.
+		 * 
+		 * @return The number of bytes available to read.
+		 */
+		size_t available() override;
+
+		/**
+		 * @brief Clears currently stored buffer data.
+		 */
+		void clearBuffer();
+		void waitForSerialData();
 	};
 } // end of namespace LinSer.
