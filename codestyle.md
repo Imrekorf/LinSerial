@@ -6,7 +6,8 @@ Document will probably be updated over time.
 ## Namescheme
 1. Names, except enum values, should use camelCase, where the starting letter is a lower case and every following word starts with a capital letter.
 2. Enum values should be full CAPS and an underscore should be used between words.
-3. private variables and functions should start with an underscore. struct values that should not be changed by the user should start with a double underscore.
+3. static variables and functions should start with an underscore. struct values that should not be changed by the user should start with a double underscore.
+4. private functions should start with a double underscore.
 
 ## Code documentation
 1. Any function should be documented with doxygen comments.
