@@ -1,7 +1,7 @@
 #include <thread>
 #include <fstream>
 #include <signal.h>
-#include "helpers.h"
+#include "common.h"
 #include "pseudoterminal.h"
 
 pseudoterminal::ConnectedPorts::ConnectedPorts()
