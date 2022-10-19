@@ -1,7 +1,3 @@
-if(NOT DEFINED SOCAT)
-    message("WARNING: Could not determine whether socat installed or not.\nSocat is needed for the test suite - https://linux.die.net/man/1/socat")
-endif()
-
 include_directories (doctest)
 include_directories (../)
 

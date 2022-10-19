@@ -3,9 +3,14 @@
 #include <signal.h>
 #include "common.h"
 #include "pseudoterminal.h"
+#include <iostream>
 
 pseudoterminal::ConnectedPorts::ConnectedPorts()
 {
+    if (execute("which socat").empty()){
+        std::cerr << "[WARNING] Seems like socat is not installed - required to setup connected port\n";
+    }
+
     std::string socat_str = execute("((socat -d -d pty,raw,echo=0 pty,raw,echo=0) > " +  OUTPUT_FILE +" 2>&1)& echo $!");
     socat_pid = std::stoi(socat_str);
 
