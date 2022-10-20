@@ -9,8 +9,8 @@ TEST_SUITE ("communication_tests")
     {
         pseudoterminal::ConnectedPorts c_ports;
         const auto& [endpoint1, endpoint2] = c_ports.get(); 
-        LinSer::Serial writer(endpoint1.c_str());
-        LinSer::Serial receiver(endpoint2.c_str());
+        linSer::serial writer(endpoint1.c_str());
+        linSer::serial receiver(endpoint2.c_str());
         
         auto receiver_thread = std::thread([&receiver](){
             auto start_ts = std::chrono::steady_clock::now(); 

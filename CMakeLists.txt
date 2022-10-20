@@ -13,7 +13,7 @@ option(BUILD_TESTS "Build tests" ON)
 #set(CMAKE_BUILD_TYPE Debug)
 
 add_library(lin_serial STATIC LinSerial.cpp)
-add_definitions(-DLINSERDEBUG=0) 
+add_definitions(-DLINSER_LOG_LEVEL=1) 
 
 if(BUILD_EXAMPLE)
     add_executable(lin_serial_example Example.cpp)
