@@ -51,7 +51,7 @@
 #if (LINSER_LOG_LEVEL & LINSER_LOG_ERRORS)
 	#define linSerLogError(...)   LinSerLogPre("Error"); printf(__VA_ARGS__)
 #else
-	#define linSerLogError (...)
+	#define linSerLogError(...) 
 #endif
 #if (LINSER_LOG_LEVEL & LINSER_LOG_INFO) 
 	#define linSerLogInfo(...)    LinSerLogPre("Info "); printf(__VA_ARGS__)
