@@ -170,7 +170,7 @@ namespace linSer {
 			 */
 			inline unsigned int getBufferSize() const;
 		};
-	}; // end of namespace buffer.
+	} // end of namespace buffer.
 
 
 
