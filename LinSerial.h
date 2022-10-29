@@ -303,22 +303,18 @@ namespace linSer {
 
 	/**=========================== Serial Class  =========================== **/
 
-	class iSerial {
-		protected:
-			virtual size_t serRead(char* buffer, size_t length) = 0;
-			virtual size_t serReadUntil(char* buffer, char terminator, size_t length) = 0;
-			virtual size_t available() = 0;
-	};
-
 	/**
 	 * @brief Serial interface implementation using arduino style functions.
 	 */
-	class serialBase : public iSerial {
+	class serialBase {
 	protected:
 		int hSerial = 0;
 		std::mutex	   	serialHandleMutex;		// Gets locked whenever a function that uses hSerial is called.
 		std::string	   	eolString;
 
+		virtual size_t serRead(char* buffer, size_t length) = 0;
+		virtual size_t serReadUntil(char* buffer, char terminator, size_t length) = 0;
+		virtual size_t available() = 0;
 	public:
 		/**
 		 * @brief Construct a new Serial object, starting one thread for reading.
