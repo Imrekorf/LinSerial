@@ -5,7 +5,7 @@
 int main() {
     linSerLogInfo("Debug: %s", (LINSER_LOG_LEVEL & LINSER_LOG_DEBUG ? "on" : "off"));
     
-    linSer::serial port("/dev/tty10");
+    linSer::serialSync port("/dev/tty10");
     // expands to: 
 	// LinSer::serial port("/dev/ttyACM0", LinSer::serParam(
     //     LinSer::serParam::baudrate::b9600,

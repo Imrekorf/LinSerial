@@ -13,7 +13,7 @@ TEST_SUITE ("time_out_tests")
     {
         pseudoterminal::ConnectedPorts c_ports;
         const auto& [endpoint1, endpoint2] = c_ports.get(); 
-        linSer::serial receiver(endpoint1.c_str());
+        linSer::serialSync receiver(endpoint1.c_str());
         CHECK_THROWS(receiver.readLine());
     }
 };
